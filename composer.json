@@ -1,0 +1,29 @@
+{
+    "name": "sandevelopment/ibinet-sdk",
+    "type": "library",
+    "description": "Ibinet SDK For Laravel Application",
+    "homepage": "https://ibinet.net/",
+    "authors": [
+        {
+            "name": "PT. San Teknologi Asia",
+            "email": "info@sandevelopment.com",
+            "role": "Company"
+        },
+        {
+            "name": "PT. San Teknologi Asia",
+            "email": "info@sandevelopment.com",
+            "role": "Company"
+        }
+    ],
+    "autoload": {
+        "psr-4": {
+            "Ibinet\\Models\\": "Models",
+            "Ibinet\\Services\\": "Services",
+            "Ibinet\\Helpers\\": "Helpers"
+        }
+    },
+    "require": {
+        "spatie/laravel-activitylog": "^4.9.1",
+        "tymon/jwt-auth": "^2.0"
+    }
+}
