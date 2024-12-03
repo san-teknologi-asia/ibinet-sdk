@@ -25,5 +25,8 @@
     "require": {
         "spatie/laravel-activitylog": "^4.9.1",
         "tymon/jwt-auth": "^2.0"
+    },
+    "aliases":{
+        "Uuid": "Ramsey\\Uuid\\Uuid"
     }
 }
