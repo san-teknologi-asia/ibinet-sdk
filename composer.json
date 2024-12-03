@@ -19,7 +19,8 @@
         "psr-4": {
             "Ibinet\\Models\\": "Models",
             "Ibinet\\Services\\": "Services",
-            "Ibinet\\Helpers\\": "Helpers"
+            "Ibinet\\Helpers\\": "Helpers",
+            "Ibinet\\Middleware\\": "Middleware"
         }
     },
     "require": {
