@@ -78,22 +78,22 @@ class User extends Authenticatable implements JWTSubject
 
     public function role()
     {
-        return $this->belongsTo('IDC\Models\Role');
+        return $this->belongsTo('Ibinet\Models\Role');
     }
 
     public function region()
     {
-        return $this->belongsToMany('IDC\Models\Region', 'user_regions');
+        return $this->belongsToMany('Ibinet\Models\Region', 'user_regions');
     }
 
     public function homebase()
     {
-        return $this->belongsToMany('IDC\Models\HomeBase', 'user_homebases');
+        return $this->belongsToMany('Ibinet\Models\HomeBase', 'user_homebases');
     }
 
     public function zone()
     {
-        return $this->belongsToMany('IDC\Models\Zone', 'user_zones');
+        return $this->belongsToMany('Ibinet\Models\Zone', 'user_zones');
     }
 
     /**
