@@ -10,7 +10,7 @@ class RouteHelper{
      */
     public static function routeProfile()
     {
-        return redirect()->away(env('SSO_URL') . '/profile');
+        return env('SSO_URL') . '/profile';
     }
 
     /**
@@ -20,6 +20,6 @@ class RouteHelper{
      */
     public static function routeLogout()
     {
-        return redirect()->away(env('SSO_URL') . '/logout');
+        return env('SSO_URL') . '/logout';
     }
 }
