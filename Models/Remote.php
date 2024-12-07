@@ -69,109 +69,109 @@ class Remote extends Model
 
     public function workUnit()
     {
-        return $this->belongsTo('IDC\Models\WorkUnit');
+        return $this->belongsTo('Ibinet\Models\WorkUnit');
     }
 
     public function remoteType()
     {
-        return $this->belongsTo('IDC\Models\RemoteType');
+        return $this->belongsTo('Ibinet\Models\RemoteType');
     }
 
     public function territory()
     {
-        return $this->belongsTo('IDC\Models\RemoteTerritory', 'remote_territory_id');
+        return $this->belongsTo('Ibinet\Models\RemoteTerritory', 'remote_territory_id');
     }
 
     public function supervision()
     {
-        return $this->belongsTo('IDC\Models\Supervision');
+        return $this->belongsTo('Ibinet\Models\Supervision');
     }
 
     public function homeBase()
     {
-        return $this->belongsTo('IDC\Models\HomeBase');
+        return $this->belongsTo('Ibinet\Models\HomeBase');
     }
 
     public function pic()
     {
-        return $this->hasMany('IDC\Models\RemotePic');
+        return $this->hasMany('Ibinet\Models\RemotePic');
     }
 
     public function link()
     {
-        return $this->belongsTo('IDC\Models\Link');
+        return $this->belongsTo('Ibinet\Models\Link');
     }
 
     public function province()
     {
-        return $this->belongsTo('IDC\Models\Province', 'province_code');
+        return $this->belongsTo('Ibinet\Models\Province', 'province_code');
     }
 
     public function city()
     {
-        return $this->belongsTo('IDC\Models\City', 'city_code');
+        return $this->belongsTo('Ibinet\Models\City', 'city_code');
     }
 
     public function district()
     {
-        return $this->belongsTo('IDC\Models\District', 'distric_code');
+        return $this->belongsTo('Ibinet\Models\District', 'distric_code');
     }
 
     public function village()
     {
-        return $this->belongsTo('IDC\Models\Village', 'village_code');
+        return $this->belongsTo('Ibinet\Models\Village', 'village_code');
     }
 
     public function serials()
     {
-        return $this->hasMany('IDC\Models\RemoteSerial');
+        return $this->hasMany('Ibinet\Models\RemoteSerial');
     }
 
     public function modem_type()
     {
-        return $this->belongsTo('IDC\Models\HardwareVariety', 'modem_type_id');
+        return $this->belongsTo('Ibinet\Models\HardwareVariety', 'modem_type_id');
     }
 
     public function modemType()
     {
-        return $this->belongsTo('IDC\Models\HardwareVariety', 'modem_type_id');
+        return $this->belongsTo('Ibinet\Models\HardwareVariety', 'modem_type_id');
     }
 
     public function mounting()
     {
-        return $this->belongsTo('IDC\Models\Mounting', 'mounting');
+        return $this->belongsTo('Ibinet\Models\Mounting', 'mounting');
     }
 
     public function satelite()
     {
-        return $this->belongsTo('IDC\Models\Satelite', 'satelite_id');
+        return $this->belongsTo('Ibinet\Models\Satelite', 'satelite_id');
     }
 
     public function project()
     {
-        return $this->belongsToMany('IDC\Models\Project', 'project_remotes');
+        return $this->belongsToMany('Ibinet\Models\Project', 'project_remotes');
     }
 
     public function tickets()
     {
-        return $this->belongsToMany('IDC\Models\Ticket', 'ticket_remotes');
+        return $this->belongsToMany('Ibinet\Models\Ticket', 'ticket_remotes');
     }
 
     public function zone()
     {
-        return $this->belongsTo('IDC\Models\Zone', 'zone_id');
+        return $this->belongsTo('Ibinet\Models\Zone', 'zone_id');
     }
 
     public function latesTicket()
     {
-        return $this->belongsToMany('IDC\Models\Ticket', 'ticket_remotes')
+        return $this->belongsToMany('Ibinet\Models\Ticket', 'ticket_remotes')
             ->orderBy('created_at', 'desc')
             ->limit(1);
     }
 
     public function latestExpenseReportLocation()
     {
-        return $this->belongsTo('IDC\Models\ExpenseReportLocation', 'id', 'remote_id')
+        return $this->belongsTo('Ibinet\Models\ExpenseReportLocation', 'id', 'remote_id')
             ->orderBy('created_at', 'desc');
     }
 

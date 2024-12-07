@@ -23,12 +23,12 @@ class ProjectRemote extends Model
 
     public function remote()
     {
-        return $this->belongsTo('IDC\Models\Remote');
+        return $this->belongsTo('Ibinet\Models\Remote');
     }
 
     public function project()
     {
-        return $this->belongsTo('IDC\Models\Project');
+        return $this->belongsTo('Ibinet\Models\Project');
     }
 
     /**

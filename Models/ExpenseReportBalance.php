@@ -52,12 +52,12 @@ class ExpenseReportBalance extends Model
 
     public function expenseReport()
     {
-        return $this->belongsTo('IDC\Models\ExpenseReport', 'expense_report_id');
+        return $this->belongsTo('Ibinet\Models\ExpenseReport', 'expense_report_id');
     }
 
     public function expenseCategory()
     {
-        return $this->belongsTo('IDC\Models\ExpenseCategory', 'expense_category_id')->withTrashed();
+        return $this->belongsTo('Ibinet\Models\ExpenseCategory', 'expense_category_id')->withTrashed();
     }
 
     /**

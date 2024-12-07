@@ -23,7 +23,7 @@ class TicketTimer extends Model
 
     public function ticket()
     {
-        return $this->belongsTo('IDC\Models\Ticket');
+        return $this->belongsTo('Ibinet\Models\Ticket');
     }
 
     /**

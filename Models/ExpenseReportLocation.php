@@ -43,77 +43,77 @@ class ExpenseReportLocation extends Model
 
     public function client()
     {
-        return $this->belongsTo('IDC\Models\Client')->withTrashed();
+        return $this->belongsTo('Ibinet\Models\Client')->withTrashed();
     }
 
     public function district()
     {
-        return $this->belongsTo('IDC\Models\District');
+        return $this->belongsTo('Ibinet\Models\District');
     }
 
     public function remote()
     {
-        return $this->belongsTo('IDC\Models\Remote');
+        return $this->belongsTo('Ibinet\Models\Remote');
     }
 
     public function project()
     {
-        return $this->belongsTo('IDC\Models\Project');
+        return $this->belongsTo('Ibinet\Models\Project');
     }
 
     public function ticket()
     {
-        return $this->belongsTo('IDC\Models\Ticket');
+        return $this->belongsTo('Ibinet\Models\Ticket');
     }
 
     public function expense_report()
     {
-        return $this->belongsTo('IDC\Models\ExpenseReport');
+        return $this->belongsTo('Ibinet\Models\ExpenseReport');
     }
 
     public function expenseReport()
     {
-        return $this->belongsTo('IDC\Models\ExpenseReport');
+        return $this->belongsTo('Ibinet\Models\ExpenseReport');
     }
 
     public function workType()
     {
-        return $this->belongsTo('IDC\Models\WorkType')->withTrashed();
+        return $this->belongsTo('Ibinet\Models\WorkType')->withTrashed();
     }
 
     public function remote_helpdesk()
     {
-        return $this->hasOne('IDC\Models\RemoteHelpdesk', 'expense_report_id');
+        return $this->hasOne('Ibinet\Models\RemoteHelpdesk', 'expense_report_id');
     }
 
     public function remoteHelpdesk()
     {
-        return $this->hasOne('IDC\Models\RemoteHelpdesk', 'expense_report_id');
+        return $this->hasOne('Ibinet\Models\RemoteHelpdesk', 'expense_report_id');
     }
 
     public function remoteFinance()
     {
-        return $this->hasOne('IDC\Models\RemoteFinance', 'expense_report_location_id');
+        return $this->hasOne('Ibinet\Models\RemoteFinance', 'expense_report_location_id');
     }
 
     public function adminProcessBy()
     {
-        return $this->belongsTo('IDC\Models\User', 'admin_process_by');
+        return $this->belongsTo('Ibinet\Models\User', 'admin_process_by');
     }
 
     public function helpdeskProcessBy()
     {
-        return $this->belongsTo('IDC\Models\User', 'helpdesk_process_by');
+        return $this->belongsTo('Ibinet\Models\User', 'helpdesk_process_by');
     }
 
     public function financeProcessBy()
     {
-        return $this->belongsTo('IDC\Models\User', 'finance_process_by');
+        return $this->belongsTo('Ibinet\Models\User', 'finance_process_by');
     }
 
     public function remoteType()
     {
-        return $this->belongsTo('IDC\Models\RemoteType');
+        return $this->belongsTo('Ibinet\Models\RemoteType');
     }
 
     /**

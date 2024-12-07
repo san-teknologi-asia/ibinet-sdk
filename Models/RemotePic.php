@@ -20,6 +20,6 @@ class RemotePic extends Model
 
     public function pic()
     {
-        return $this->belongsTo('IDC\Models\Pic');
+        return $this->belongsTo('Ibinet\Models\Pic');
     }
 }

@@ -19,7 +19,7 @@ class Village extends Model
 
     public function district()
     {
-        return $this->belongsTo('IDC\Models\District', 'district_code', 'code');
+        return $this->belongsTo('Ibinet\Models\District', 'district_code', 'code');
     }
 
     public function getDistrictNameAttribute()

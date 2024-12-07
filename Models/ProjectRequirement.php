@@ -14,7 +14,7 @@ class ProjectRequirement extends Model
 
     public function requirements()
     {
-        return $this->hasOne('IDC\Models\Requirement', 'id', 'requirement_id');
+        return $this->hasOne('Ibinet\Models\Requirement', 'id', 'requirement_id');
     }
 
     /**

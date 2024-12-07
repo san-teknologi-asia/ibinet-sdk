@@ -41,16 +41,16 @@ class Project extends Model
 
     public function client()
     {
-        return $this->belongsTo('IDC\Models\Client');
+        return $this->belongsTo('Ibinet\Models\Client');
     }
 
     public function workType()
     {
-        return $this->hasMany('IDC\Models\ProjectWorkType');
+        return $this->hasMany('Ibinet\Models\ProjectWorkType');
     }
 
     public function remote()
     {
-        return $this->hasMany('IDC\Models\ProjectRemote');
+        return $this->hasMany('Ibinet\Models\ProjectRemote');
     }
 }

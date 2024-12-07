@@ -26,7 +26,7 @@ class RemoteSerialHelpdesk extends Model
 
     public function serial_type()
     {
-        return $this->belongsTo('IDC\Models\HardwareType', 'serial_type_id');
+        return $this->belongsTo('Ibinet\Models\HardwareType', 'serial_type_id');
     }
 
     /**
