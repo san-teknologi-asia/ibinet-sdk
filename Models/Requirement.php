@@ -25,7 +25,7 @@ class Requirement extends Model
 
     public function items()
     {
-        return $this->hasMany('IDC\Models\RequirementItem')->orderBy('order');
+        return $this->hasMany('Ibinet\Models\RequirementItem')->orderBy('order');
     }
 
     /**

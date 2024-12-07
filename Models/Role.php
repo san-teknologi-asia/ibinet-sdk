@@ -25,7 +25,7 @@ class Role extends Model
 
     public function permissions()
     {
-        return $this->hasMany('IDC\Models\RolePermission');
+        return $this->hasMany('Ibinet\Models\RolePermission');
     }
 
     /**

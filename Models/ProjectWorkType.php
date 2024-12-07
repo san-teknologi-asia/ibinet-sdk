@@ -20,6 +20,6 @@ class ProjectWorkType extends Model
 
     public function workType()
     {
-        return $this->belongsTo('IDC\Models\WorkType');
+        return $this->belongsTo('Ibinet\Models\WorkType');
     }
 }

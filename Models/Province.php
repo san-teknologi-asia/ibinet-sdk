@@ -18,14 +18,14 @@ class Province extends Model
 
     public function cities()
     {
-        return $this->hasMany('IDC\Models\City', 'province_code', 'code');
+        return $this->hasMany('Ibinet\Models\City', 'province_code', 'code');
     }
 
     public function districts()
     {
         return $this->hasManyThrough(
-            'IDC\Models\District',
-            'IDC\Models\City',
+            'Ibinet\Models\District',
+            'Ibinet\Models\City',
             'province_code',
             'city_code',
             'code',

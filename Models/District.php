@@ -19,12 +19,12 @@ class District extends Model
 
     public function city()
     {
-        return $this->belongsTo('IDC\Models\City', 'city_code', 'code');
+        return $this->belongsTo('Ibinet\Models\City', 'city_code', 'code');
     }
 
     public function villages()
     {
-        return $this->hasMany('IDC\Models\Village', 'district_code', 'code');
+        return $this->hasMany('Ibinet\Models\Village', 'district_code', 'code');
     }
 
     public function getCityNameAttribute()

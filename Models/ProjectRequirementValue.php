@@ -26,7 +26,7 @@ class ProjectRequirementValue extends Model
 
     public function created_by()
     {
-        return $this->belongsTo('IDC\Models\User', 'created_by');
+        return $this->belongsTo('Ibinet\Models\User', 'created_by');
     }
 
     public static function boot()

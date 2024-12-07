@@ -30,37 +30,37 @@ class Ticket extends Model
 
     public function remote()
     {
-        return $this->hasOne('IDC\Models\TicketRemote');
+        return $this->hasOne('Ibinet\Models\TicketRemote');
     }
 
     public function user()
     {
-        return $this->belongsTo('IDC\Models\User');
+        return $this->belongsTo('Ibinet\Models\User');
     }
 
     public function project()
     {
-        return $this->belongsTo('IDC\Models\Project');
+        return $this->belongsTo('Ibinet\Models\Project');
     }
 
     public function created_by()
     {
-        return $this->belongsTo('IDC\Models\User', 'created_by');
+        return $this->belongsTo('Ibinet\Models\User', 'created_by');
     }
     
     public function createdBy()
     {
-        return $this->belongsTo('IDC\Models\User', 'created_by');
+        return $this->belongsTo('Ibinet\Models\User', 'created_by');
     }
 
     public function expenseReportLocation()
     {
-        return $this->hasOne('IDC\Models\ExpenseReportLocation', 'ticket_id');
+        return $this->hasOne('Ibinet\Models\ExpenseReportLocation', 'ticket_id');
     }
 
     public function timers()
     {
-        return $this->hasMany('IDC\Models\TicketTimer', 'ticket_id');
+        return $this->hasMany('Ibinet\Models\TicketTimer', 'ticket_id');
     }
 
     /**

@@ -25,7 +25,7 @@ class RemoteFinanceRequirement extends Model
 
     public function requirement()
     {
-        return $this->belongsTo('IDC\Models\RequirementItem', 'project_requirement_value_id', 'id');
+        return $this->belongsTo('Ibinet\Models\RequirementItem', 'project_requirement_value_id', 'id');
     }
 
     /**

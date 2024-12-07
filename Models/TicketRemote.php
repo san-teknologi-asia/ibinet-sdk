@@ -19,11 +19,11 @@ class TicketRemote extends Model
 
     public function remote()
     {
-        return $this->belongsTo('IDC\Models\Remote');
+        return $this->belongsTo('Ibinet\Models\Remote');
     }
 
     public function ticket()
     {
-        return $this->belongsTo('IDC\Models\Ticket');
+        return $this->belongsTo('Ibinet\Models\Ticket');
     }
 }

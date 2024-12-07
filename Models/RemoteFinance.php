@@ -25,7 +25,7 @@ class RemoteFinance extends Model
 
     public function requirements()
     {
-        return $this->hasMany('IDC\Models\RemoteFinanceRequirement', 'remote_finance_id');
+        return $this->hasMany('Ibinet\Models\RemoteFinanceRequirement', 'remote_finance_id');
     }
 
     /**

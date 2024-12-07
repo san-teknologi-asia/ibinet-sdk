@@ -19,19 +19,19 @@ class City extends Model
 
     public function province()
     {
-        return $this->belongsTo('IDC\Models\Province', 'province_code', 'code');
+        return $this->belongsTo('Ibinet\Models\Province', 'province_code', 'code');
     }
 
     public function districts()
     {
-        return $this->hasMany('IDC\Models\District', 'city_code', 'code');
+        return $this->hasMany('Ibinet\Models\District', 'city_code', 'code');
     }
 
     public function villages()
     {
         return $this->hasManyThrough(
-            'IDC\Models\Village',
-            'IDC\Models\District',
+            'Ibinet\Models\Village',
+            'Ibinet\Models\District',
             'city_code',
             'district_code',
             'code',
