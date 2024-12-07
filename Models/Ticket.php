@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Spatie\Activitylog\Contracts\Activity;
 use IDC\Traits\LogTrait;
-use Uuid;
+use Ramsey\Uuid\Uuid;
 
 class Ticket extends Model
 {

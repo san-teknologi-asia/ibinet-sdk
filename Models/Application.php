@@ -4,7 +4,7 @@ namespace Ibinet\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Uuid;
+use Ramsey\Uuid\Uuid;
 
 class Application extends Model
 {

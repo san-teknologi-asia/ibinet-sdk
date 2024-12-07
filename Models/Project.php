@@ -4,18 +4,14 @@ namespace Ibinet\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
-use Spatie\Activitylog\Contracts\Activity;
-use IDC\Traits\LogTrait;
-use Uuid;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Ramsey\Uuid\Uuid;
 
 class Project extends Model
 {
-    use SoftDeletes, LogTrait;
+    use SoftDeletes;
 
     public $incrementing = false;
-    protected static $logName = 'Project';
-    protected static $logAttributes = ['*'];
-    protected static $logOnlyDirty = true;
 
     public $keyType = 'string';
 
@@ -25,7 +21,8 @@ class Project extends Model
      * @var array
      */
     protected $guarded = [
-        'created_at', 'updated_at'
+        'created_at',
+        'updated_at'
     ];
 
     /**
@@ -52,5 +49,15 @@ class Project extends Model
     public function remote()
     {
         return $this->hasMany('Ibinet\Models\ProjectRemote');
+    }
+
+    /**
+     * The remotes that belong to the Project
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\BelongsToMany
+     */
+    public function remotes(): BelongsToMany
+    {
+        return $this->belongsToMany(Remote::class, 'project_remotes', 'project_id', 'remote_id');
     }
 }

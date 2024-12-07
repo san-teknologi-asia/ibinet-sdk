@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
 use Spatie\Activitylog\Contracts\Activity as ActivityContract;
-use Uuid;
+use Ramsey\Uuid\Uuid;
 
 class Activity extends Model implements ActivityContract
 {
