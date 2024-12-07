@@ -34,12 +34,12 @@ class ExpenseReportRequest extends Model
 
     public function expenseReport()
     {
-        return $this->belongsTo('IDC\Models\ExpenseReport', 'expense_report_id');
+        return $this->belongsTo('Ibinet\Models\ExpenseReport', 'expense_report_id');
     }
 
     public function approveBy()
     {
-        return $this->belongsTo('IDC\Models\User', 'approve_by')->withTrashed();
+        return $this->belongsTo('Ibinet\Models\User', 'approve_by')->withTrashed();
     }
 
     /**

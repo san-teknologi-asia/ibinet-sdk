@@ -33,32 +33,32 @@ class ExpenseReport extends Model
 
     public function assignmentTo()
     {
-        return $this->belongsTo('IDC\Models\User', 'assignment_to')->withTrashed();
+        return $this->belongsTo('Ibinet\Models\User', 'assignment_to')->withTrashed();
     }
 
     public function financeVerifiedBy()
     {
-        return $this->belongsTo('IDC\Models\User', 'finance_verified_by')->withTrashed();
+        return $this->belongsTo('Ibinet\Models\User', 'finance_verified_by')->withTrashed();
     }
 
     public function createdBy()
     {
-        return $this->belongsTo('IDC\Models\User', 'created_by')->withTrashed();
+        return $this->belongsTo('Ibinet\Models\User', 'created_by')->withTrashed();
     }
 
     public function location()
     {
-        return $this->hasMany('IDC\Models\ExpenseReportLocation')->orderBy('created_at', 'desc');
+        return $this->hasMany('Ibinet\Models\ExpenseReportLocation')->orderBy('created_at', 'desc');
     }
 
     public function balance()
     {
-        return $this->hasMany('IDC\Models\ExpenseReportBalance', 'expense_report_id')->orderBy('created_at', 'desc');
+        return $this->hasMany('Ibinet\Models\ExpenseReportBalance', 'expense_report_id')->orderBy('created_at', 'desc');
     }
 
     public function balanceRequest()
     {
-        return $this->hasMany('IDC\Models\ExpenseReportRequest', 'expense_report_id')->orderBy('created_at', 'desc');
+        return $this->hasMany('Ibinet\Models\ExpenseReportRequest', 'expense_report_id')->orderBy('created_at', 'desc');
     }
 
     public function getCurrentAttribute()
