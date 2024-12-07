@@ -3,7 +3,7 @@
 namespace Ibinet\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use IDC\Models\Remote;
+use Ibinet\Models\Remote;
 use Ramsey\Uuid\Uuid;
 
 class ExpenseReportLocation extends Model

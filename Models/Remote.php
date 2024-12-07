@@ -5,14 +5,12 @@ namespace Ibinet\Models;
 use Ramsey\Uuid\Uuid;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
-use Spatie\Activitylog\Contracts\Activity;
-use IDC\Models\ExpenseReportLocation;
-use IDC\Models\RemoteActiveHistory;
-use IDC\Traits\LogTrait;
+use Ibinet\Models\ExpenseReportLocation;
+use Ibinet\Models\RemoteActiveHistory;
 
 class Remote extends Model
 {
-    use SoftDeletes, LogTrait;
+    use SoftDeletes;
 
     public $incrementing = false;
 
