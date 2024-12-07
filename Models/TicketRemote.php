@@ -3,7 +3,7 @@
 namespace Ibinet\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use Uuid;
+use Ramsey\Uuid\Uuid;
 
 class TicketRemote extends Model
 {

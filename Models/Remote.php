@@ -2,7 +2,7 @@
 
 namespace Ibinet\Models;
 
-use Uuid;
+use Ramsey\Uuid\Uuid;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Spatie\Activitylog\Contracts\Activity;
