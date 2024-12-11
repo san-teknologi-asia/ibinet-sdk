@@ -116,6 +116,11 @@ class ExpenseReportLocation extends Model
         return $this->belongsTo('Ibinet\Models\RemoteType');
     }
 
+    public function region()
+    {
+        return $this->belongsTo('Ibinet\Models\Region');
+    }
+
     /**
      *  Setup model event hooks
      */
