@@ -3,14 +3,11 @@
 namespace Ibinet\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Ramsey\Uuid\Uuid;
 
 class Schedule extends Model
 {
-    use SoftDeletes;
-
     public $incrementing = false;
 
     public $keyType = 'string';
