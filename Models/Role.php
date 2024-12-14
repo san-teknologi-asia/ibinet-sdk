@@ -4,6 +4,7 @@ namespace Ibinet\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Ramsey\Uuid\Uuid;
+use DB;
 
 class Role extends Model
 {
@@ -26,6 +27,34 @@ class Role extends Model
     public function permissions()
     {
         return $this->hasMany('Ibinet\Models\RolePermission');
+    }
+
+    public function parentRole()
+    {
+        return $this->belongsTo(Role::class, 'parent_id');
+    }
+
+    public function childrenRoles()
+    {
+        $roles = DB::select("
+            WITH RECURSIVE role_hierarchy AS (
+                SELECT id, parent_id, name
+                FROM roles
+                WHERE id = ?
+
+                UNION ALL
+
+                SELECT r.id, r.parent_id, r.name
+                FROM roles r
+                INNER JOIN role_hierarchy rh ON r.parent_id = rh.id
+            )
+            SELECT * FROM role_hierarchy;
+        ", [$this->id]);
+
+        $roles = array_filter($roles, function($role) {
+            return $role->id != $this->id;
+        });
+        return array_values($roles);
     }
 
     /**
