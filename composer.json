@@ -21,15 +21,15 @@
             "Ibinet\\Services\\": "Services",
             "Ibinet\\Helpers\\": "Helpers",
             "Ibinet\\Middleware\\": "Middleware"
-        }
+        },
+        "files": [
+            "Helpers/SettingHelper.php"
+        ]
     },
     "require": {
         "spatie/laravel-activitylog": "^4.9.1",
         "tymon/jwt-auth": "^2.0",
         "league/flysystem-aws-s3-v3": "^3.29",
         "intervention/image": "^3.9"
-    },
-    "aliases":{
-        "Uuid": "Ramsey\\Uuid\\Uuid"
     }
 }
