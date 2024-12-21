@@ -18,7 +18,9 @@ class ExpenseReportHelper
      */
     public static function generateERCode()
     {
-        $expenseReportCount = ExpenseReport::whereMonth('created_at', date('m'))->count();
+        $expenseReportCount = ExpenseReport::whereMonth('created_at', date('m'))
+            ->whereYear('created_at', date('Y'))
+            ->count();
 
         $expenseReportCode = "IER" . date('Ymd') . str_pad($expenseReportCount + 1, 4, '0', STR_PAD_LEFT);
 
@@ -66,7 +68,9 @@ class ExpenseReportHelper
      */
     public static function generateTicketCode()
     {
-        $dataCount = Ticket::whereMonth('created_at', date('m'))->count();
+        $dataCount = Ticket::whereMonth('created_at', date('m'))
+            ->whereYear('created_at', date('Y'))
+            ->count();
 
         $ticketCode = "TICKET" . date('Ymd') . str_pad($dataCount + 1, 4, '0', STR_PAD_LEFT);
 
