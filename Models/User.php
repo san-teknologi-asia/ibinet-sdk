@@ -96,6 +96,11 @@ class User extends Authenticatable implements JWTSubject
         return $this->belongsToMany('Ibinet\Models\Zone', 'user_zones');
     }
 
+    public function project()
+    {
+        return $this->belongsToMany('Ibinet\Models\Project', 'user_projects');
+    }
+
     /**
      *  Setup model event hooks
      */
