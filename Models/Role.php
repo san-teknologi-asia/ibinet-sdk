@@ -29,7 +29,7 @@ class Role extends Model
         return $this->hasMany('Ibinet\Models\RolePermission');
     }
 
-    public function parentRole()
+    public function role()
     {
         return $this->belongsTo(Role::class, 'parent_id');
     }
