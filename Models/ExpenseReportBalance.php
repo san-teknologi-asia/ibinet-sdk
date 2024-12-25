@@ -60,6 +60,11 @@ class ExpenseReportBalance extends Model
         return $this->belongsTo('Ibinet\Models\ExpenseCategory', 'expense_category_id')->withTrashed();
     }
 
+    public function createdBy() 
+    {
+        return $this->belongsTo('Ibinet\Models\User', 'created_by');
+    }
+
     /**
      *  Setup model event hooks
      */
