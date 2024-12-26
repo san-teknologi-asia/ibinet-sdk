@@ -4,8 +4,9 @@ namespace Ibinet\Services;
 
 use Ibinet\Models\ApprovalActivity;
 use Ibinet\Models\ApprovalFlowDetail;
+use Ibinet\Models\ApprovalFlow;
+use Ibinet\Models\ApprovalFlowCondition;
 use Ibinet\Models\ExpenseReportBalance;
-use Ibinet\Models\ExpenseReport;
 use Ibinet\Models\ExpenseReportLocation;
 use Ibinet\Models\ExpenseReportRemote;
 use Ibinet\Models\User;
@@ -42,15 +43,11 @@ class ApprovalService{
             // expense report balance
             $expenseReportBalance = ExpenseReportBalance::find($refId);
 
-            if($expenseReportBalance->location_type == 'REGION'){
-                $expenseReportLocation = ExpenseReportLocation::find($expenseReportBalance->location_id);
-                $projectId = $expenseReportLocation->project_id;
-                $regionId = $expenseReportLocation->region_id;
-            } else if($expenseReportBalance->location_type == 'REMOTE'){
-                $expenseReportLocation = ExpenseReportRemote::find($expenseReportBalance->location_id);
-                $projectId = $expenseReportLocation->project_id;
-                $project = Project::find($projectId);
-                $regionId = $project->region_id;
+            $defineLocation = self::defineProjectAndRegionByLocation($expenseReportBalance->location_type, $expenseReportBalance->location_id);
+
+            if($defineLocation != null){
+                $projectId = $defineLocation['projectId'];
+                $regionId = $defineLocation['regionId'];
             } else{
                 return [
                     'success' => false,
@@ -113,11 +110,105 @@ class ApprovalService{
      */
     public static function processApproval($refId, $refType, $data)
     {
-        if($refType == 'EXPENSE'){
+        $currentActivity = self::fetchCurrentActivity($refId, $refType);
 
+        if($currentActivity == null){
+            return [
+                'success' => false,
+                'message' => 'Approval step not found'
+            ];
+        }
+
+        $projectId = null;
+        $regionId = null;
+
+        if($refType == 'EXPENSE'){
+            $expenseReportBalance = ExpenseReportBalance::find($refId);
+
+            // first step
+            $currentStep = ApprovalFlowDetail::where('approval_flow_id', $currentActivity->approval_flow_id)
+                ->where('id', $currentActivity->approval_flow_detail_id)
+                ->first();
+
+            // get second step
+            $nextStep = ApprovalFlowDetail::where('approval_flow_id', $currentActivity->approval_flow_id)
+                ->where('step', $currentStep->step + 1)
+                ->get();
+
+            if(count($nextStep) == 0){
+                return [
+                    'success' => false,
+                    'message' => 'Approval step not found'
+                ];
+            } else if (count($nextStep) == 1){
+                $nextStep = $nextStep[0];
+            } else if (count($nextStep) > 1){
+                // TECH DEBT : Adding process and ask if when request fund it should place location id
+                foreach ($nextStep as $key => $value) {
+                    if($value->condition_id == 'ER_EXPENSE_AMOUNT'){
+                        $condition = $value->condition;
+                        $conditionValue = $value->condition_value;
+
+                        // Build a dynamic PHP condition
+                        if (eval("return \$expenseReportBalance->credit $condition $conditionValue;")) {
+                            $nextStep = $value; // Assign the current step as the next step
+                            break; // Exit the loop once the condition is satisfied
+                        }
+                    }
+                }
+            }
+
+            $defineLocation = self::defineProjectAndRegionByLocation($expenseReportBalance->location_type, $expenseReportBalance->location_id);
+
+            if($defineLocation != null){
+                $projectId = $defineLocation['projectId'];
+                $regionId = $defineLocation['regionId'];
+            } else{
+                return [
+                    'success' => false,
+                    'message' => 'Location type is not valid'
+                ];
+            }
         } else if($refType == 'REQUEST_AMOUNT'){
 
         }
+
+        $nextAssignmentUser = self::fetchUserByCondition(
+            $nextStep->status, 
+            $nextStep->role_id,
+            $projectId,
+            $regionId
+        );
+
+        if ($nextAssignmentUser == null){
+            return [
+                'success' => false,
+                'message' => 'User not available'
+            ];
+        }
+
+
+        ApprovalActivity::find($currentActivity->id)->update([
+            'status' => $data['status'],
+            'note' => $data['note'],
+            'process_at' => now()
+        ]);
+
+        ApprovalActivity::create([
+            'ref_id' => $refId,
+            'ref_type' => $refType,
+            'step' => $nextStep->step,
+            'step_name' => $nextStep->name,
+            'status' => 'PENDING',
+            'role_id' => $nextStep->role_id,
+            'user_id' => $nextAssignmentUser->id,
+            'process_at' => now()
+        ]);
+
+        return [
+            'success' => true,
+            'message' => 'Approval has been made'
+        ];
     }
 
     /**
@@ -125,9 +216,14 @@ class ApprovalService{
      * 
      * @return void
      */
-    public static function getCurrentStep($refId, $refType)
+    public static function fetchCurrentActivity($refId, $refType)
     {
-        
+        $currentActivity = ApprovalActivity::where('ref_id', $refId)
+            ->where('ref_type', $refType)
+            ->orderBy('step', 'desc')
+            ->first();
+
+        return $currentActivity;
     }
 
     /**
@@ -163,4 +259,30 @@ class ApprovalService{
         return $nextAssignmentUser;
     }
 
+    /**
+     * Define project and region by location
+     * 
+     * @param String $locationType
+     * @param String $locationId
+     */
+    public static function defineProjectAndRegionByLocation($locationType, $locationId)
+    {
+        if($locationType == 'REGION'){
+            $expenseReportLocation = ExpenseReportLocation::find($locationId);
+            $projectId = $expenseReportLocation->project_id;
+            $regionId = $expenseReportLocation->region_id;
+        } else if($locationType == 'REMOTE'){
+            $expenseReportLocation = ExpenseReportRemote::find($locationId);
+            $projectId = $expenseReportLocation->project_id;
+            $project = Project::find($projectId);
+            $regionId = $project->region_id;
+        } else{
+            return null;
+        }
+
+        return [
+            'projectId' => $projectId,
+            'regionId' => $regionId
+        ];
+    }
 }
