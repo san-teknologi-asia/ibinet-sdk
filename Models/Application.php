@@ -34,6 +34,10 @@ class Application extends Model
         return env('AWS_BASE_URL').$value;
     }
 
+    public function applicationModules()
+    {
+        return $this->hasMany(ApplicationModule::class, 'application_id', 'id');
+    }
 
     /**
      *  Setup model event hooks
