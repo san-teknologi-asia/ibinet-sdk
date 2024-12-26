@@ -82,7 +82,7 @@ class ApprovalService{
             'ref_type' => $refType,
             'step' => $firstStep->step,
             'step_name' => $firstStep->role->name,
-            'status' => 'ACTION',
+            'status' => 'ACTION', // ACTION : Just For First Step
             'role_id' => $data['role_id'],
             'user_id' => $data['user_id'],
             'note' => $data['note'],
