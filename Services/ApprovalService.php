@@ -18,6 +18,9 @@ class ApprovalService{
     private const SAME_REGION = 'SAME-REGION';
     private const SAME_PROJECT = 'SAME-PROJECT';
 
+    private const REF_EXPENSE = 'EXPENSE';
+    private const REF_FUND_REQUEST = 'FUND_REQUEST';
+
     /**
      * Create approval step initialization
      * 
@@ -25,7 +28,7 @@ class ApprovalService{
      */
     public static function initStep($refId, $refType, $data)
     {
-        if($refType == 'EXPENSE'){
+        if($refType == self::REF_EXPENSE){
             $approvalFlow = setting('APPROVAL_EXPENSE_ER');
             $projectId = null;
             $regionId = null;
@@ -54,7 +57,7 @@ class ApprovalService{
                     'message' => 'Location type is not valid'
                 ];
             }
-        } else if($refType == 'FUND_REQUEST'){
+        } else if($refType == self::REF_FUND_REQUEST){
             $approvalFlow = setting('APPROVAL_FUND_REQUEST');
 
             // TECH DEBT : Adding process and ask if when request fund it should place location id
@@ -122,7 +125,7 @@ class ApprovalService{
         $projectId = null;
         $regionId = null;
 
-        if($refType == 'EXPENSE'){
+        if($refType == self::REF_EXPENSE){
             $expenseReportBalance = ExpenseReportBalance::find($refId);
 
             // first step
@@ -169,8 +172,8 @@ class ApprovalService{
                     'message' => 'Location type is not valid'
                 ];
             }
-        } else if($refType == 'REQUEST_AMOUNT'){
-
+        } else if($refType == self::REF_FUND_REQUEST){
+            // TECH DEBT : Adding process and ask if when request fund it should place location id
         }
 
         $nextAssignmentUser = self::fetchUserByCondition(
