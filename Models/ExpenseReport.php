@@ -27,10 +27,6 @@ class ExpenseReport extends Model
         'is_verified_by_finance' => 'boolean'
     ];
 
-    protected $appends = [
-        'current'
-    ];
-
     public function assignmentTo()
     {
         return $this->belongsTo('Ibinet\Models\User', 'assignment_to')->withTrashed();
@@ -59,30 +55,6 @@ class ExpenseReport extends Model
     public function balanceRequest()
     {
         return $this->hasMany('Ibinet\Models\ExpenseReportRequest', 'expense_report_id')->orderBy('created_at', 'desc');
-    }
-
-    public function getCurrentAttribute()
-    {
-        return [
-            'total_amount' => $this->getTotalAmountAttribute(),
-            'usage_amount' => $this->getUsageAmountAttribute(),
-            'remaining_amount' => $this->getRemainingAmountAttribute()
-        ];
-    }
-
-    private function getTotalAmountAttribute()
-    {
-        return $this->balance->where('status', 'APPROVED')->sum('debit');
-    }
-
-    private function getUsageAmountAttribute()
-    {
-        return $this->balance->where('status', 'APPROVED')->sum('credit');
-    }
-
-    private function getRemainingAmountAttribute()
-    {
-        return $this->balance->where('status', 'APPROVED')->sum('debit') - $this->balance->where('status', 'APPROVED')->sum('credit');
     }
 
     /**
