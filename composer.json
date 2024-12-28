@@ -20,10 +20,13 @@
             "Ibinet\\Models\\": "Models",
             "Ibinet\\Services\\": "Services",
             "Ibinet\\Helpers\\": "Helpers",
-            "Ibinet\\Middleware\\": "Middleware"
+            "Ibinet\\Middleware\\": "Middleware",
+            "Ibinet\\Providers\\": "Providers"
         },
         "files": [
-            "Helpers/SettingHelper.php"
+            "Helpers/SettingHelper.php",
+            "Helpers/UserHelper.php",
+            "Helpers/PermissionHelper.php"
         ]
     },
     "require": {

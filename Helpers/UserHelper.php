@@ -1,11 +1,34 @@
 <?php
 
-function getUserRegion($user)
+function getUserRegionArray($auth)
 {
-    return $user->region->name;
+    $regions = [];
+
+    foreach ($auth->region as $region) {
+        $regions[] = $region->id;
+    }
+
+    return $regions;
 }
 
-function getUserProject($user)
+function getUserHomebaseArray($auth)
 {
-    
+    $homebases = [];
+
+    foreach ($auth->homebase as $homebase) {
+        $homebases[] = $homebase->id;
+    }
+
+    return $homebases;
+}
+
+function getUserProjectArray($auth)
+{
+    $projects = [];
+
+    foreach ($auth->project as $project) {
+        $projects[] = $project->id;
+    }
+
+    return $projects;
 }
