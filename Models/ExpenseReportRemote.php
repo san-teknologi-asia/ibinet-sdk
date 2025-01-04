@@ -35,4 +35,14 @@ class ExpenseReportRemote extends Model
             $model->id = (string) Uuid::uuid4();
         });
     }
+
+    public function project()
+    {
+        return $this->belongsTo('Ibinet\Models\Project', 'project_id');
+    }
+
+    public function remote()
+    {
+        return $this->belongsTo('Ibinet\Models\Remote', 'remote_id');
+    }
 }

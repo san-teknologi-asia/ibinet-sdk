@@ -4,6 +4,8 @@ namespace Ibinet\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Ramsey\Uuid\Uuid;
+use Ibinet\Models\ExpenseReportLocation;
+use Ibinet\Models\ExpenseReportRemote;
 
 class ExpenseReportBalance extends Model
 {
@@ -63,6 +65,21 @@ class ExpenseReportBalance extends Model
     public function createdBy() 
     {
         return $this->belongsTo('Ibinet\Models\User', 'created_by');
+    }
+
+    public function getLocationAttribute()
+    {
+        if ($this->location_type === 'REGION') {
+            $location = ExpenseReportLocation::where('id', $this->location_id)->first();
+            return $location ? "({$location->region->name}) {$location->project->name}" : null;
+        }
+    
+        if ($this->location_type === 'REMOTE') {
+            $location = ExpenseReportRemote::where('id', $this->location_id)->first();
+            return $location ? "({$location->remote->name}) {$location->project->name}" : null;
+        }
+    
+        return null;
     }
 
     /**

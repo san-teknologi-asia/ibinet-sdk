@@ -37,6 +37,11 @@ class ExpenseReportRequest extends Model
         return $this->belongsTo('Ibinet\Models\ExpenseReport', 'expense_report_id');
     }
 
+    public function expenseReportProject()
+    {
+        return $this->belongsTo('Ibinet\Models\Project', 'project_id');
+    }
+
     public function approveBy()
     {
         return $this->belongsTo('Ibinet\Models\User', 'approve_by')->withTrashed();
