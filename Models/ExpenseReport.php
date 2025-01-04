@@ -57,6 +57,11 @@ class ExpenseReport extends Model
         return $this->hasMany('Ibinet\Models\ExpenseReportRequest', 'expense_report_id')->orderBy('created_at', 'desc');
     }
 
+    public function remote()
+    {
+        return $this->hasMany('Ibinet\Models\ExpenseReportRemote', 'expense_report_id')->orderBy('created_at', 'desc');
+    }
+
     /**
      *  Setup model event hooks
      */
