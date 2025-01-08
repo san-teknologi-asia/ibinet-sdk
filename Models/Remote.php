@@ -29,42 +29,6 @@ class Remote extends Model
         'created_at', 'updated_at'
     ];
 
-    protected $appends = [
-        'is_have_helpdesk',
-        'is_have_admin'
-    ];
-
-    public function getIsHaveHelpdeskAttribute()
-    {
-        $er = ExpenseReportLocation::with(['remote'])
-                ->whereNotNull(['phase', 'project_id'])
-                ->orderBy('created_at')
-                ->where('remote_id', $this->id)
-                ->first();
-
-        if($er){
-            return true;
-        } else{
-            return false;
-        }
-    }
-
-    public function getIsHaveAdminAttribute()
-    {
-        $er = ExpenseReportLocation::with(['remote'])
-                ->whereNotNull(['phase', 'project_id'])
-                ->orderBy('created_at')
-                ->where('remote_id', $this->id)
-                // ->where('is_process_helpdesk', true)
-                ->first();
-
-        if($er){
-            return true;
-        } else{
-            return false;
-        }
-    }
-
     public function workUnit()
     {
         return $this->belongsTo('Ibinet\Models\WorkUnit');
