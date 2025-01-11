@@ -23,7 +23,7 @@ class PermissionServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        Blade::if('can', function ($permission) {
+        Blade::if('has', function ($permission) {
             try {
                 $authRoles = Auth::user()->role_id;
                 $roleHasPermission = Cache::get('permission');
