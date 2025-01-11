@@ -4,12 +4,11 @@ use Ibinet\Models\RolePermission;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 
-function can()
+function can($permission)
 {
     try {
         $authRoles = Auth::user()->role_id;
         $roleHasPermission = Cache::get('permission');
-
 
         if (!$roleHasPermission) {
             $roleHasPermission = RolePermission::where('role_id', $authRoles)
