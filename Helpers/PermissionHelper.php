@@ -4,7 +4,7 @@ use Ibinet\Models\RolePermission;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 
-function can($permission)
+function has($permission)
 {
     try {
         $authRoles = Auth::user()->role_id;
