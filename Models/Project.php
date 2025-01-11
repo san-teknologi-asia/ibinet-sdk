@@ -60,4 +60,14 @@ class Project extends Model
     {
         return $this->belongsToMany(Remote::class, 'project_remotes', 'project_id', 'remote_id');
     }
+
+     /**
+     * The remotes that belong to the Project
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\BelongsToMany
+     */
+    public function regions(): BelongsToMany
+    {
+        return $this->belongsToMany(Region::class, 'project_regions', 'project_id', 'region_id');
+    }
 }
