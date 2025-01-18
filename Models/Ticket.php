@@ -5,12 +5,11 @@ namespace Ibinet\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Spatie\Activitylog\Contracts\Activity;
-use IDC\Traits\LogTrait;
 use Ramsey\Uuid\Uuid;
 
 class Ticket extends Model
 {
-    use SoftDeletes, LogTrait;
+    use SoftDeletes;
 
     public $incrementing = false;
     protected static $logName = 'Ticket';
@@ -30,7 +29,7 @@ class Ticket extends Model
 
     public function remote()
     {
-        return $this->hasOne('Ibinet\Models\TicketRemote');
+        return $this->belongsTo('Ibinet\Models\Remote', 'remote_id');
     }
 
     public function user()
@@ -53,9 +52,9 @@ class Ticket extends Model
         return $this->belongsTo('Ibinet\Models\User', 'created_by');
     }
 
-    public function expenseReportLocation()
+    public function expenseReportRemote()
     {
-        return $this->hasOne('Ibinet\Models\ExpenseReportLocation', 'ticket_id');
+        return $this->hasOne('Ibinet\Models\ExpenseReportRemote', 'ticket_id');
     }
 
     public function timers()
