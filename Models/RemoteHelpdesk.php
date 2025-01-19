@@ -6,12 +6,11 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Spatie\Activitylog\Contracts\Activity;
-use IDC\Traits\LogTrait;
 use Ramsey\Uuid\Uuid;
 
 class RemoteHelpdesk extends Model
 {
-    use SoftDeletes, LogTrait;
+    use SoftDeletes;
 
     public $incrementing = false;
 

@@ -50,4 +50,9 @@ class ExpenseReportRemote extends Model
     {
         return $this->belongsTo('Ibinet\Models\Schedule', 'schedule_id');
     }
+
+    public function expenseReport() 
+    {
+        return $this->belongsTo('Ibinet\Models\ExpenseReport', 'expense_report_id');
+    }
 }
