@@ -24,6 +24,25 @@ class ApprovalActivity extends Model
         'created_at', 'updated_at'
     ];
 
+    public function user()
+    {
+        return $this->belongsTo(User::class, 'user_id', 'id');
+    }
+
+    public function role()
+    {
+        return $this->belongsTo(Role::class, 'role_id', 'id');
+    }
+
+    public function ref()
+    {
+        if($this->ref_type == 'FUND_REQUEST'){
+            return $this->belongsTo(ExpenseReportRequest::class, 'ref_id', 'id');
+        } else if($this->ref_type == 'EXPENSE'){
+            return $this->belongsTo(ExpenseReportBalance::class, 'ref_id', 'id');
+        }
+    }
+
     /**
      *  Setup model event hooks
      */

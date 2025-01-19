@@ -33,14 +33,14 @@ class ApprovalService{
             $approvalFlow = setting('APPROVAL_EXPENSE_ER');
 
             // first step
-            $firstStep = ApprovalFlowDetail::where('approval_flow_id', $approvalFlow->value)
-                ->orderBy('step')
+            $firstStep = ApprovalFlowDetail::where('approval_flow_id', $approvalFlow)
+                ->orderBy('order')
                 ->first();
 
             // get second step
-            $secondStep = ApprovalFlowDetail::where('approval_flow_id', $approvalFlow->value)
-                ->where('step', $firstStep->step + 1)
-                ->first();
+            $secondStep = ApprovalFlowDetail::where('approval_flow_id', $approvalFlow)
+                ->where('order', $firstStep->order)
+                ->get();
 
             // expense report balance
             $expenseReportBalance = ExpenseReportBalance::find($refId);
@@ -60,14 +60,14 @@ class ApprovalService{
             $approvalFlow = setting('APPROVAL_FUND_REQUEST');
 
             // first step
-            $firstStep = ApprovalFlowDetail::where('approval_flow_id', $approvalFlow->value)
-                ->orderBy('step')
+            $firstStep = ApprovalFlowDetail::where('approval_flow_id', $approvalFlow)
+                ->orderBy('order')
                 ->first();
 
             // get second step
-            $secondStep = ApprovalFlowDetail::where('approval_flow_id', $approvalFlow->value)
-                ->where('step', $firstStep->step + 1)
-                ->first();
+            $secondStep = ApprovalFlowDetail::where('approval_flow_id', $approvalFlow)
+                ->where('order', $firstStep->order)
+                ->get();
 
             // expense report balance
             $expenseReportRequest = ExpenseReportRequest::find($refId);
@@ -82,6 +82,24 @@ class ApprovalService{
                     'success' => false,
                     'message' => 'Location type is not valid'
                 ];
+            }
+        }
+
+        if (count($secondStep) == 1){
+            $secondStep = $secondStep[0];
+        } else if (count($secondStep) > 1){
+            // TECH DEBT : Adding process and ask if when request fund it should place location id
+            foreach ($secondStep as $key => $value) {
+                if($value->condition_id == 'ER_AMOUNT_FUND_REQUEST'){
+                    $condition = $value->condition;
+                    $conditionValue = $value->condition_value;
+
+                    // Build a dynamic PHP condition
+                    if (eval("return \$expenseReportRequest->amount $condition $conditionValue;")) {
+                        $secondStep = $value; // Assign the current step as the next step
+                        break; // Exit the loop once the condition is satisfied
+                    }
+                }
             }
         }
 
@@ -102,8 +120,9 @@ class ApprovalService{
         ApprovalActivity::create([
             'ref_id' => $refId,
             'ref_type' => $refType,
-            'step' => $firstStep->step,
-            'step_name' => $firstStep->role->name,
+            'approval_flow_id' => $approvalFlow,
+            'step' => 0,
+            'step_name' => "Expense Report Request Initialization",
             'status' => 'ACTION', // ACTION : Just For First Step
             'role_id' => $data['role_id'],
             'user_id' => $data['user_id'],
@@ -114,7 +133,8 @@ class ApprovalService{
         ApprovalActivity::create([
             'ref_id' => $refId,
             'ref_type' => $refType,
-            'step' => $secondStep->step,
+            'approval_flow_id' => $approvalFlow,
+            'step' => $secondStep->order,
             'step_name' => $secondStep->name,
             'status' => 'PENDING',
             'role_id' => $secondStep->role_id,
@@ -157,7 +177,7 @@ class ApprovalService{
 
             // get second step
             $nextStep = ApprovalFlowDetail::where('approval_flow_id', $currentActivity->approval_flow_id)
-                ->where('step', $currentStep->step + 1)
+                ->where('order', $currentStep->order + 1)
                 ->get();
 
             if(count($nextStep) == 0){
@@ -204,7 +224,7 @@ class ApprovalService{
 
             // get second step
             $nextStep = ApprovalFlowDetail::where('approval_flow_id', $currentActivity->approval_flow_id)
-                ->where('step', $currentStep->step + 1)
+                ->where('order', $currentStep->order + 1)
                 ->get();
 
             if(count($nextStep) == 0){
@@ -266,7 +286,8 @@ class ApprovalService{
         ApprovalActivity::create([
             'ref_id' => $refId,
             'ref_type' => $refType,
-            'step' => $nextStep->step,
+            'approval_flow_id' => $approvalFlow,
+            'step' => $nextStep->order,
             'step_name' => $nextStep->name,
             'status' => 'PENDING',
             'role_id' => $nextStep->role_id,
@@ -319,7 +340,7 @@ class ApprovalService{
         } else if($status == self::SAME_PROJECT){
             $nextAssignmentUser = User::where('role_id', $roleId)
                 ->whereHas('project', function($query) use ($projectId) {
-                    $query->where('id', $projectId);
+                    $query->where('projects.id', $projectId);
                 })
                 ->where('is_active', true)
                 ->first();
@@ -359,7 +380,7 @@ class ApprovalService{
      * 
      * @return void
      */
-    public function defineProjectAndRegionByFundRequest($expenseReportRequest)
+    public static function defineProjectAndRegionByFundRequest($expenseReportRequest)
     {
         $projectId = $expenseReportRequest->project_id;
 

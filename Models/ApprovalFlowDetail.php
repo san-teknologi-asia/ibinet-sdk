@@ -24,6 +24,11 @@ class ApprovalFlowDetail extends Model
         'created_at', 'updated_at'
     ];
 
+    public function role()
+    {
+        return $this->belongsTo(Role::class, 'role_id', 'id');
+    }
+
     /**
      *  Setup model event hooks
      */

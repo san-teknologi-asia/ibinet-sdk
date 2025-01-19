@@ -29,6 +29,10 @@ class ExpenseReportRequest extends Model
      */
     public function getTransferImageAttribute($value)
     {
+        if (empty($value)) {
+            return null;
+        }
+
         return env('AWS_BASE_URL').$value;
     }
 
@@ -45,6 +49,13 @@ class ExpenseReportRequest extends Model
     public function approveBy()
     {
         return $this->belongsTo('Ibinet\Models\User', 'approve_by')->withTrashed();
+    }
+
+    public function latestApprovalActivity()
+    {
+        return $this->hasOne(ApprovalActivity::class, 'ref_id', 'id')
+            ->where('ref_type', 'FUND_REQUEST')
+            ->latest('step');
     }
 
     /**
