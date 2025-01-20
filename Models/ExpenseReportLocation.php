@@ -27,7 +27,7 @@ class ExpenseReportLocation extends Model
 
     public function getInfoAttribute()
     {
-        $text .= "<b>Region : </b>" . $this->region->name ?? "-" . "<br/>";
+        $text = "<b>Region : </b>" . $this->region->name ?? "-" . "<br/>";
         $text .= "<b>Project : </b>" . $this->project->name ?? "-";
 
         return $text;
