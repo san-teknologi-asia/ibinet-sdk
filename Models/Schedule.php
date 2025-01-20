@@ -4,6 +4,7 @@ namespace Ibinet\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Ramsey\Uuid\Uuid;
 
 class Schedule extends Model
@@ -60,5 +61,15 @@ class Schedule extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class, 'user_id');
+    }
+
+    /**
+     * Get all of the expenseReportRemotes for the Schedule
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\HasMany
+     */
+    public function expenseReportRemotes(): HasMany
+    {
+        return $this->hasMany(ExpenseReportRemote::class, 'schedule_id', 'id');
     }
 }
