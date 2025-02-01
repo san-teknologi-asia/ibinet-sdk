@@ -121,6 +121,7 @@ class ApprovalService{
             'ref_id' => $refId,
             'ref_type' => $refType,
             'approval_flow_id' => $approvalFlow,
+            'approval_flow_detail_id' => null,
             'step' => 0,
             'step_name' => "Expense Report Request Initialization",
             'status' => 'ACTION', // ACTION : Just For First Step
@@ -134,6 +135,7 @@ class ApprovalService{
             'ref_id' => $refId,
             'ref_type' => $refType,
             'approval_flow_id' => $approvalFlow,
+            'approval_flow_detail_id' => $secondStep->id,
             'step' => $secondStep->order,
             'step_name' => $secondStep->name,
             'status' => 'PENDING',
@@ -168,6 +170,7 @@ class ApprovalService{
         $regionId = null;
 
         if($refType == self::REF_EXPENSE){
+            $approvalFlow = setting('APPROVAL_EXPENSE_ER');
             $expenseReportBalance = ExpenseReportBalance::find($refId);
 
             // first step
@@ -215,6 +218,7 @@ class ApprovalService{
                 ];
             }
         } else if($refType == self::REF_FUND_REQUEST){
+            $approvalFlow = setting('APPROVAL_FUND_REQUEST');
             $expenseReportRequest = ExpenseReportRequest::find($refId);
 
             // first step
@@ -278,6 +282,7 @@ class ApprovalService{
         }
 
         ApprovalActivity::find($currentActivity->id)->update([
+            'processed_at' => now(),
             'status' => $data['status'],
             'note' => $data['note'],
             'process_at' => now()
@@ -304,7 +309,7 @@ class ApprovalService{
     /**
      * Get current step of approval
      * 
-     * @return void
+     * @return object
      */
     public static function fetchCurrentActivity($refId, $refType)
     {
