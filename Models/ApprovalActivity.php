@@ -34,13 +34,14 @@ class ApprovalActivity extends Model
         return $this->belongsTo(Role::class, 'role_id', 'id');
     }
 
-    public function ref()
+    public function expenseReportRequest()
     {
-        if($this->ref_type == 'FUND_REQUEST'){
-            return $this->belongsTo(ExpenseReportRequest::class, 'ref_id', 'id');
-        } else if($this->ref_type == 'EXPENSE'){
-            return $this->belongsTo(ExpenseReportBalance::class, 'ref_id', 'id');
-        }
+        return $this->belongsTo(ExpenseReportRequest::class, 'ref_id', 'id');
+    }
+
+    public function expenseReportBalance()
+    {
+        return $this->belongsTo(ExpenseReportBalance::class, 'ref_id', 'id');
     }
 
     /**
