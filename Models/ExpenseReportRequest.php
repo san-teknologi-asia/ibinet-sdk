@@ -55,7 +55,12 @@ class ExpenseReportRequest extends Model
     {
         return $this->hasOne(ApprovalActivity::class, 'ref_id', 'id')
             ->where('ref_type', 'FUND_REQUEST')
-            ->latest('step');
+            ->latest('created_at');
+    }
+
+    public function project()
+    {
+        return $this->belongsTo('Ibinet\Models\Project');
     }
 
     /**

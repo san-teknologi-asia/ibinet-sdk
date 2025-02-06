@@ -177,88 +177,21 @@ class ApprovalService{
 
             $projectId = null;
             $regionId = null;
-            if ($approvalStatus == 'REVISION'){
-                $nextStepOrder = $currentStep->order - 1;
+            if($currentActivity->step > 0){
+                if ($approvalStatus == 'REVISION'){
+                    $nextStepOrder = $currentStep->order - 1;
+                } else{
+                    $nextStepOrder = $currentStep->order + 1;
+                }
             } else{
-                $nextStepOrder = $currentStep->order + 1;
+                $nextStepOrder = 1;
             }
 
-            // get second step
-            $nextStep = ApprovalFlowDetail::where('approval_flow_id', $currentActivity->approval_flow_id)
-                ->where('order', $nextStepOrder)
-                ->get();
+            if($nextStepOrder < 1){
+                $firstStep = ApprovalActivity::where('ref_id', $currentActivity->ref_id)
+                    ->where('step', 0)
+                    ->first();
 
-            if($refType == self::REF_EXPENSE){
-                $approvalFlow = setting('APPROVAL_EXPENSE_ER');
-                $expenseReportBalance = ExpenseReportBalance::find($refId);
-                $expenseReportAmount = $expenseReportBalance->credit;
-
-                $defineLocation = self::defineProjectAndRegionByLocation($expenseReportBalance->location_type, $expenseReportBalance->location_id);
-
-                // Check approval status
-                if($approvalStatus == 'REJECTED'){
-                    $expenseReportBalance->update([
-                        'status' => $data['status']
-                    ]);
-                }
-            } else if($refType == self::REF_FUND_REQUEST){
-                $approvalFlow = setting('APPROVAL_FUND_REQUEST');
-                $expenseReportRequest = ExpenseReportRequest::find($refId);
-                $expenseReportAmount = $expenseReportRequest->amount;
-
-                $defineLocation = self::defineProjectAndRegionByFundRequest($expenseReportRequest);
-
-                // Check approval status
-                if($approvalStatus == 'REJECTED'){
-                    $expenseReportRequest->update([
-                        'status' => $data['status']
-                    ]);
-                }
-            }
-
-            if($defineLocation != null){
-                $projectId = $defineLocation['projectId'];
-                $regionId = $defineLocation['regionId'];
-            } else{
-                return [
-                    'success' => false,
-                    'message' => 'Location type is not valid'
-                ];
-            }
-
-            // Check for next step
-            $numberOfNextStep = count($nextStep);
-            if($numberOfNextStep == 0){
-                $isLastStep = true;
-            } elseif ($numberOfNextStep == 1){
-                $nextStep = $nextStep[0];
-            } elseif ($numberOfNextStep > 1){ // Condition For Multiple Step Ahead
-                foreach ($nextStep as $key => $value) {
-                    $condition = $value->condition;
-                    $conditionValue = $value->condition_value;
-
-                    if (eval("return \$expenseReportAmount $condition $conditionValue;")) {
-                        $nextStep = $value; // Assign the current step as the next step
-                        break; // Exit the loop once the condition is satisfied
-                    }
-                }
-            }
-
-            $nextAssignmentUser = self::fetchUserByCondition(
-                $nextStep->status,
-                $nextStep->role_id,
-                $projectId,
-                $regionId
-            );
-
-            if ($nextAssignmentUser == null){
-                return [
-                    'success' => false,
-                    'message' => 'User not available'
-                ];
-            }
-
-            if (!$isLastStep){
                 ApprovalActivity::find($currentActivity->id)->update([
                     'processed_at' => now(),
                     'status' => $data['status'],
@@ -266,59 +199,150 @@ class ApprovalService{
                     'process_at' => now()
                 ]);
 
-                if($data['status'] == 'REJECTED'){
+                // Duplicate the first step
+                $newApproval = $firstStep->replicate();
+                $newApproval->status = 'REVISION';
+                $newApproval->created_at = now(); // Ensure timestamps are updated
+                $newApproval->updated_at = now();
+                $newApproval->save();
+            } else{
+                // get second step
+                $nextStep = ApprovalFlowDetail::where('approval_flow_id', $currentActivity->approval_flow_id)
+                    ->where('order', $nextStepOrder)
+                    ->get();
+
+                if($refType == self::REF_EXPENSE){
+                    $approvalFlow = setting('APPROVAL_EXPENSE_ER');
+                    $expenseReportBalance = ExpenseReportBalance::find($refId);
+                    $expenseReportAmount = $expenseReportBalance->credit;
+
+                    $defineLocation = self::defineProjectAndRegionByLocation($expenseReportBalance->location_type, $expenseReportBalance->location_id);
+
+                    // Check approval status
+                    if($approvalStatus == 'REJECTED'){
+                        $expenseReportBalance->update([
+                            'status' => $data['status']
+                        ]);
+                    }
+                } else if($refType == self::REF_FUND_REQUEST){
+                    $approvalFlow = setting('APPROVAL_FUND_REQUEST');
+                    $expenseReportRequest = ExpenseReportRequest::find($refId);
+                    $expenseReportAmount = $expenseReportRequest->amount;
+
+                    $defineLocation = self::defineProjectAndRegionByFundRequest($expenseReportRequest);
+
+                    // Check approval status
+                    if($approvalStatus == 'REJECTED'){
+                        $expenseReportRequest->update([
+                            'status' => $data['status']
+                        ]);
+                    }
+                }
+
+                if($defineLocation != null){
+                    $projectId = $defineLocation['projectId'];
+                    $regionId = $defineLocation['regionId'];
+                } else{
+                    return [
+                        'success' => false,
+                        'message' => 'Location type is not valid'
+                    ];
+                }
+
+                // Check for next step
+                $numberOfNextStep = count($nextStep);
+                if($numberOfNextStep == 0){
+                    $isLastStep = true;
+                } elseif ($numberOfNextStep == 1){
+                    $nextStep = $nextStep[0];
+                } elseif ($numberOfNextStep > 1){ // Condition For Multiple Step Ahead
+                    foreach ($nextStep as $key => $value) {
+                        $condition = $value->condition;
+                        $conditionValue = $value->condition_value;
+
+                        if (eval("return \$expenseReportAmount $condition $conditionValue;")) {
+                            $nextStep = $value; // Assign the current step as the next step
+                            break; // Exit the loop once the condition is satisfied
+                        }
+                    }
+                }
+
+                $nextAssignmentUser = self::fetchUserByCondition(
+                    $nextStep->status,
+                    $nextStep->role_id,
+                    $projectId,
+                    $regionId
+                );
+
+                if ($nextAssignmentUser == null){
+                    return [
+                        'success' => false,
+                        'message' => 'User not available'
+                    ];
+                }
+
+                if (!$isLastStep){
+                    ApprovalActivity::find($currentActivity->id)->update([
+                        'processed_at' => now(),
+                        'status' => $data['status'],
+                        'note' => $data['note'],
+                        'process_at' => now()
+                    ]);
+
+                    if($data['status'] == 'REJECTED'){
+                        ApprovalActivity::create([
+                            'ref_id' => $refId,
+                            'ref_type' => $refType,
+                            'approval_flow_id' => $approvalFlow,
+                            'approval_flow_detail_id' => null,
+                            'step' => $nextStepOrder,
+                            'step_name' => "Approval Finished With Rejected By ".$currentActivity->user->name,
+                            'status' => 'END',
+                            'role_id' => $currentActivity->role_id,
+                            'user_id' => $currentActivity->user_id,
+                            'note' => $data['note'],
+                            'process_at' => now()
+                        ]);
+                    } else{
+                        ApprovalActivity::create([
+                            'ref_id' => $refId,
+                            'ref_type' => $refType,
+                            'approval_flow_id' => $approvalFlow,
+                            'approval_flow_detail_id' => $nextStep->id,
+                            'step' => $nextStep->order,
+                            'step_name' => $nextStep->name,
+                            'status' => 'PENDING',
+                            'role_id' => $nextStep->role_id,
+                            'user_id' => $nextAssignmentUser->id,
+                            'process_at' => now()
+                        ]);
+                    }
+                } else{
+                    ApprovalActivity::find($currentActivity->id)->update([
+                        'processed_at' => now(),
+                        'status' => $data['status'],
+                        'note' => $data['note'],
+                        'process_at' => now()
+                    ]);
+
                     ApprovalActivity::create([
                         'ref_id' => $refId,
                         'ref_type' => $refType,
                         'approval_flow_id' => $approvalFlow,
                         'approval_flow_detail_id' => null,
-                        'step' => 0,
-                        'step_name' => "Approval Finished With Rejected By ".$currentActivity->user->name,
+                        'step' => $nextStepOrder,
+                        'step_name' => "Approval Finished With ".$data['status']." By ".$currentActivity->user->name,
                         'status' => 'END',
                         'role_id' => $currentActivity->role_id,
                         'user_id' => $currentActivity->user_id,
                         'note' => $data['note'],
                         'process_at' => now()
                     ]);
-                } else{
-                    ApprovalActivity::create([
-                        'ref_id' => $refId,
-                        'ref_type' => $refType,
-                        'approval_flow_id' => $approvalFlow,
-                        'approval_flow_detail_id' => $nextStep->id,
-                        'step' => $nextStep->order,
-                        'step_name' => $nextStep->name,
-                        'status' => 'PENDING',
-                        'role_id' => $nextStep->role_id,
-                        'user_id' => $nextAssignmentUser->id,
-                        'process_at' => now()
+
+                    $expenseReportRequest->update([
+                        'status' => $data['status']
                     ]);
                 }
-            } else{
-                ApprovalActivity::find($currentActivity->id)->update([
-                    'processed_at' => now(),
-                    'status' => $data['status'],
-                    'note' => $data['note'],
-                    'process_at' => now()
-                ]);
-
-                ApprovalActivity::create([
-                    'ref_id' => $refId,
-                    'ref_type' => $refType,
-                    'approval_flow_id' => $approvalFlow,
-                    'approval_flow_detail_id' => null,
-                    'step' => 0,
-                    'step_name' => "Approval Finished With ".$data['status']." By ".$currentActivity->user->name,
-                    'status' => 'END',
-                    'role_id' => $currentActivity->role_id,
-                    'user_id' => $currentActivity->user_id,
-                    'note' => $data['note'],
-                    'process_at' => now()
-                ]);
-
-                $expenseReportRequest->update([
-                    'status' => $data['status']
-                ]);
             }
 
             return [
@@ -328,7 +352,12 @@ class ApprovalService{
         } catch (\Exception $e){
             return [
                 'success' => false,
-                'message' => $e->getMessage()
+                'message' => "Error on line {$e->getLine()}: {$e->getMessage()}"
+            ];
+        } catch (\Throwable $e) {
+            return [
+                'success' => false,
+                'message' => "Error on line {$e->getLine()}: {$e->getMessage()}"
             ];
         }
     }
@@ -342,7 +371,7 @@ class ApprovalService{
     {
         $currentActivity = ApprovalActivity::where('ref_id', $refId)
             ->where('ref_type', $refType)
-            ->orderBy('step', 'desc')
+            ->orderBy('created_at', 'desc')
             ->first();
 
         return $currentActivity;
