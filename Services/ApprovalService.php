@@ -157,7 +157,11 @@ class ApprovalService{
      */
     public static function processApproval($refId, $refType, $data)
     {
+        $approvalStatus = $data['status'];
         $currentActivity = self::fetchCurrentActivity($refId, $refType);
+        $currentStep = ApprovalFlowDetail::where('approval_flow_id', $currentActivity->approval_flow_id)
+            ->where('id', $currentActivity->approval_flow_detail_id)
+            ->first();
 
         if($currentActivity == null){
             return [
@@ -167,104 +171,60 @@ class ApprovalService{
         }
 
         $projectId = null;
-        $regionId = null;
+        $regionId = null;        
+        if ($approvalStatus == 'REVISION'){
+            $nextStepOrder = $currentStep->order - 1;
+        } else{
+            $nextStepOrder = $currentStep->order + 1;
+        }
+        
+        // get second step
+        $nextStep = ApprovalFlowDetail::where('approval_flow_id', $currentActivity->approval_flow_id)
+            ->where('order', $nextStepOrder )
+            ->get();   
 
         if($refType == self::REF_EXPENSE){
             $approvalFlow = setting('APPROVAL_EXPENSE_ER');
             $expenseReportBalance = ExpenseReportBalance::find($refId);
-
-            // first step
-            $currentStep = ApprovalFlowDetail::where('approval_flow_id', $currentActivity->approval_flow_id)
-                ->where('id', $currentActivity->approval_flow_detail_id)
-                ->first();
-
-            // get second step
-            $nextStep = ApprovalFlowDetail::where('approval_flow_id', $currentActivity->approval_flow_id)
-                ->where('order', $currentStep->order + 1)
-                ->get();
-
-            if(count($nextStep) == 0){
-                return [
-                    'success' => false,
-                    'message' => 'Approval step not found'
-                ];
-            } else if (count($nextStep) == 1){
-                $nextStep = $nextStep[0];
-            } else if (count($nextStep) > 1){
-                // TECH DEBT : Adding process and ask if when request fund it should place location id
-                foreach ($nextStep as $key => $value) {
-                    if($value->condition_id == 'ER_EXPENSE_AMOUNT'){
-                        $condition = $value->condition;
-                        $conditionValue = $value->condition_value;
-
-                        // Build a dynamic PHP condition
-                        if (eval("return \$expenseReportBalance->credit $condition $conditionValue;")) {
-                            $nextStep = $value; // Assign the current step as the next step
-                            break; // Exit the loop once the condition is satisfied
-                        }
-                    }
-                }
-            }
-
-            $defineLocation = self::defineProjectAndRegionByLocation($expenseReportBalance->location_type, $expenseReportBalance->location_id);
-
-            if($defineLocation != null){
-                $projectId = $defineLocation['projectId'];
-                $regionId = $defineLocation['regionId'];
-            } else{
-                return [
-                    'success' => false,
-                    'message' => 'Location type is not valid'
-                ];
-            }
+            $expenseReportAmount = $expenseReportBalance->credit;
         } else if($refType == self::REF_FUND_REQUEST){
             $approvalFlow = setting('APPROVAL_FUND_REQUEST');
             $expenseReportRequest = ExpenseReportRequest::find($refId);
+            $expenseReportAmount = $expenseReportRequest->amount;
+        }
 
-            // first step
-            $currentStep = ApprovalFlowDetail::where('approval_flow_id', $currentActivity->approval_flow_id)
-                ->where('id', $currentActivity->approval_flow_detail_id)
-                ->first();
+        // Check for next step
+        if(count($nextStep) == 0){
+            return [
+                'success' => false,
+                'message' => 'Approval step not found'
+            ];
+        }
+        
+        if (count($nextStep) > 1){ // Condition For Multiple Step Ahead
+            foreach ($nextStep as $key => $value) {
+                $condition = $value->condition;
+                $conditionValue = $value->condition_value;
 
-            // get second step
-            $nextStep = ApprovalFlowDetail::where('approval_flow_id', $currentActivity->approval_flow_id)
-                ->where('order', $currentStep->order + 1)
-                ->get();
-
-            if(count($nextStep) == 0){
-                return [
-                    'success' => false,
-                    'message' => 'Approval step not found'
-                ];
-            } else if (count($nextStep) == 1){
-                $nextStep = $nextStep[0];
-            } else if (count($nextStep) > 1){
-                // TECH DEBT : Adding process and ask if when request fund it should place location id
-                foreach ($nextStep as $key => $value) {
-                    if($value->condition_id == 'ER_AMOUNT_FUND_REQUEST'){
-                        $condition = $value->condition;
-                        $conditionValue = $value->condition_value;
-
-                        // Build a dynamic PHP condition
-                        if (eval("return \$expenseReportRequest->amount $condition $conditionValue;")) {
-                            $nextStep = $value; // Assign the current step as the next step
-                            break; // Exit the loop once the condition is satisfied
-                        }
-                    }
+                if (eval("return \$expenseReportAmount $condition $conditionValue;")) {
+                    $nextStep = $value; // Assign the current step as the next step
+                    break; // Exit the loop once the condition is satisfied
                 }
             }
+        } else{
+            $nextStep = $nextStep[0];
+        }
 
-            $defineLocation = self::defineProjectAndRegionByFundRequest($expenseReportRequest);
+        $defineLocation = self::defineProjectAndRegionByLocation($expenseReportAmount->location_type, $expenseReportAmount->location_id);
 
-            if($defineLocation != null){
-                $projectId = $defineLocation['projectId'];
-                $regionId = $defineLocation['regionId'];
-            } else{
-                return [
-                    'success' => false,
-                    'message' => 'Location type is not valid'
-                ];
-            }
+        if($defineLocation != null){
+            $projectId = $defineLocation['projectId'];
+            $regionId = $defineLocation['regionId'];
+        } else{
+            return [
+                'success' => false,
+                'message' => 'Location type is not valid'
+            ];
         }
 
         $nextAssignmentUser = self::fetchUserByCondition(
@@ -283,7 +243,7 @@ class ApprovalService{
 
         ApprovalActivity::find($currentActivity->id)->update([
             'processed_at' => now(),
-            'status' => $data['status'],
+            'status' => $approvalStatus,
             'note' => $data['note'],
             'process_at' => now()
         ]);
