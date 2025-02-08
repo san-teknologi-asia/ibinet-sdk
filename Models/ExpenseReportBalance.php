@@ -67,14 +67,14 @@ class ExpenseReportBalance extends Model
         return $this->belongsTo('Ibinet\Models\User', 'created_by');
     }
 
-    public function remote()
+    public function expenseReportLocation()
     {
-        return $this->belongsTo('Ibinet\Models\Remote', 'location_id', 'id');
+        return $this->belongsTo('Ibinet\Models\ExpenseReportLocation', 'location_id');
     }
 
-    public function region()
+    public function expenseReportRemote()
     {
-        return $this->belongsTo('Ibinet\Models\Region', 'location_id', 'id');
+        return $this->belongsTo('Ibinet\Models\ExpenseReportRemote', 'location_id');
     }
 
     public function getLocationAttribute()
