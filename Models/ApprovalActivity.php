@@ -44,6 +44,11 @@ class ApprovalActivity extends Model
         return $this->belongsTo(ExpenseReportBalance::class, 'ref_id', 'id');
     }
 
+    public function approvalFlowDetail()
+    {
+        return $this->belongsTo(ApprovalFlowDetail::class, 'approval_flow_detail_id', 'id');
+    }
+
     /**
      *  Setup model event hooks
      */
