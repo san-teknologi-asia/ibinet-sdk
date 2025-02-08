@@ -99,6 +99,15 @@ class ApprovalService{
                         $secondStep = $value; // Assign the current step as the next step
                         break; // Exit the loop once the condition is satisfied
                     }
+                } else{
+                    $condition = $value->condition;
+                    $conditionValue = $value->condition_value;
+
+                    // Build a dynamic PHP condition
+                    if (eval("return \$expenseReportBalance->credit $condition $conditionValue;")) {
+                        $secondStep = $value; // Assign the current step as the next step
+                        break; // Exit the loop once the condition is satisfied
+                    }
                 }
             }
         }
