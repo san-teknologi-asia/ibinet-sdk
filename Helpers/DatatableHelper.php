@@ -51,21 +51,10 @@ class DatatableHelper{
         }
 
         if($remote){
-            if ($remote->remoteType != null){
-                $type = $remote->remoteType->name;
-            }
-
             $text = "<b class='text-primary'>{$remote->name}</b><br/>";
             $text .= "<b>IP LAN : </b>" . $remote->ip_lan . "<br/>";
-            $text .= "<b>IP P2P Modem : </b>" . $remote->ip_p2p_modem . "<br/>";
             $text .= "<b>Site ID : </b>" . ($remote->site_id ? $remote->site_id : "-"). "<br/>";
-            $text .= "<b>BC/TID : </b>" . ($remote->bc_tid ? $remote->bc_tid : "-"). "<br/>";
-            $text .= "<b>Tipe Remote : </b>{$type}<br/>";
-            $text .= "<b>Supervisi : </b>" . ($remote->supervision->name ?? "-"). "<br/>";
-            $text .= "<b>Wilayah : </b>" . ($remote->territory->name ?? "-"). "<br/>";
             $text .= "<b>Unit Kerja : </b>" . ($remote->workUnit->name ?? "-"). "<br/>";
-            $text .= "<b>Link : </b>" . ($remote->link->name ?? "-"). "<br/>";
-            $text .= "<b>Zona : </b>" . ($remote->zone->name ?? "-"). "<br/>";
 
             return $text;
         } else{
