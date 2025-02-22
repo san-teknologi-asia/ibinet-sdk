@@ -8,6 +8,7 @@ use Ibinet\Models\ExpenseReportBalance;
 use Ibinet\Models\ExpenseReportLocation;
 use Ibinet\Models\ExpenseReportRemote;
 use Ibinet\Models\ExpenseReportRequest;
+use Ibinet\Models\ApprovalRevisionHistory;
 use Ibinet\Models\User;
 
 class ApprovalService{
@@ -182,6 +183,20 @@ class ApprovalService{
                     'success' => false,
                     'message' => 'Approval step not found'
                 ];
+            }
+
+            // Check revision count
+            $revisionCount = ApprovalRevisionHistory::where('ref_id', $refId)
+                ->where('ref_type', $refType)
+                ->count();
+
+            if($revisionCount > 0){
+                if ($approvalStatus == 'REVISION'){
+                    return [
+                        'success' => false,
+                        'message' => 'You have been revised this request'
+                    ];
+                }
             }
 
             $projectId = null;
