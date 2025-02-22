@@ -92,6 +92,13 @@ class ExpenseReportBalance extends Model
         return null;
     }
 
+    public function latestApprovalActivity()
+    {
+        return $this->hasOne(ApprovalActivity::class, 'ref_id', 'id')
+            ->where('ref_type', 'EXPENSE')
+            ->latest('created_at');
+    }
+
     /**
      *  Setup model event hooks
      */

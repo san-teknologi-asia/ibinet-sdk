@@ -34,21 +34,6 @@ class Remote extends Model
         return $this->belongsTo('Ibinet\Models\WorkUnit');
     }
 
-    public function remoteType()
-    {
-        return $this->belongsTo('Ibinet\Models\RemoteType');
-    }
-
-    public function territory()
-    {
-        return $this->belongsTo('Ibinet\Models\RemoteTerritory', 'remote_territory_id');
-    }
-
-    public function supervision()
-    {
-        return $this->belongsTo('Ibinet\Models\Supervision');
-    }
-
     public function homeBase()
     {
         return $this->belongsTo('Ibinet\Models\HomeBase');
@@ -57,11 +42,6 @@ class Remote extends Model
     public function pic()
     {
         return $this->hasMany('Ibinet\Models\RemotePic');
-    }
-
-    public function link()
-    {
-        return $this->belongsTo('Ibinet\Models\Link');
     }
 
     public function province()
@@ -117,11 +97,6 @@ class Remote extends Model
     public function tickets()
     {
         return $this->belongsToMany('Ibinet\Models\Ticket', 'ticket_remotes');
-    }
-
-    public function zone()
-    {
-        return $this->belongsTo('Ibinet\Models\Zone', 'zone_id');
     }
 
     public function latesTicket()
