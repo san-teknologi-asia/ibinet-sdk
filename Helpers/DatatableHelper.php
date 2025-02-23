@@ -198,6 +198,20 @@ class DatatableHelper{
         //     </a> ';
         // }
 
+        // $action .= '<a class="btn btn-danger delete-item" href="#" data-label="pengguna" data-url="'.route('helpdesk.dashboard.destroy', $data->id).'">
+        //     <i class="dripicons-trash"></i> Hapus
+        // </a> ';
+        // $action .= '<a href="'.route('admin.project.remote.form', ['expense_location_id' => $data->id]).'" class="btn btn-success">
+        //     <i class="dripicons-enter"></i> Proses Admin
+        // </a>' ;
+        $action .= '<a href="'.route('secure.helpdesk.project.remote.form', ['id' => $data->project_id, 'expense_report_remote_id' => $data->id]).'" class="btn btn-primary">
+            <i class="dripicons-enter"></i> Proses Helpdesk
+        </a>';
+        // $action .= '<a href="'.route('helpdesk.ticket.start', $data->ticket_id).'" class="btn btn-success">
+        //     <i class="mdi mdi-timer-play"></i>
+        //     Mulai Waktu
+        // </a>';
+
         return $action;
     }
 
