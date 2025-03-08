@@ -207,6 +207,11 @@ class DatatableHelper{
         $action .= '<a href="'.route('secure.helpdesk.project.remote.form', ['id' => $data->project_id, 'expense_report_remote_id' => $data->id]).'" class="btn btn-primary">
             <i class="dripicons-enter"></i> Proses Helpdesk
         </a>';
+        $action .= '</br>';
+        $action .= '</br>';
+        $action .= '<a href="'.route('secure.admin.project.remote.form', ['id' => $data->project_id, 'expense_report_remote_id' => $data->id]).'" class="btn btn-primary">
+            <i class="dripicons-enter"></i> Proses Admin
+        </a>';
         // $action .= '<a href="'.route('helpdesk.ticket.start', $data->ticket_id).'" class="btn btn-success">
         //     <i class="mdi mdi-timer-play"></i>
         //     Mulai Waktu
