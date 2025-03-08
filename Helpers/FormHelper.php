@@ -30,9 +30,7 @@ class FormHelper{
         $imageManager = ImageManager::gd();
 
         $imageManager = $imageManager->read($image->getRealPath());
-        $imageManager->resize($width, $height, function ($constraint) {
-            $constraint->aspectRatio();
-        });
+        $imageManager->scale(width: $width, height: $height);
 
         if ($isWatermark) {
             $imageManager = self::addWatermarkImage($imageManager, $expenseReport, $mapsObj, $request);
