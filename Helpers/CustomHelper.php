@@ -54,7 +54,7 @@ class CustomHelper{
         } else if($value == 'DISMANTLE'){
             return 'bg-orange';
         } else if($value == 'DONE'){
-            return 'bg-green-dark';
+            return 'bg-success';
         } else if($value == 'CLOSED'){
             return 'bg-success';
         } else{
@@ -77,7 +77,7 @@ class CustomHelper{
         } else if($value == 'DISMANTLE'){
             return 'bg-orange';
         } else if($value == 'DONE'){
-            return 'bg-green-dark';
+            return 'bg-success';
         } else if($value == 'CLOSED'){
             return 'bg-success';
         } else{
