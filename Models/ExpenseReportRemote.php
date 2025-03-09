@@ -55,4 +55,9 @@ class ExpenseReportRemote extends Model
     {
         return $this->belongsTo('Ibinet\Models\ExpenseReport', 'expense_report_id');
     }
+
+    public function workType() 
+    {
+        return $this->belongsTo('Ibinet\Models\WorkType', 'work_type_id');
+    }
 }
