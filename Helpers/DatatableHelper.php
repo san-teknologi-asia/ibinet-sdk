@@ -137,16 +137,27 @@ class DatatableHelper{
      */
     public static function expenseReportLocationOMCAction($data)
     {
-        // TODO: Add Action, Should we add the conditional for each role?
         $action = "";
-        // $doneStatusConditional = ConditionalHelper::checkHelpdeskDoneStatus($data->helpdesk_status);
-
-        // $isHelpdesk = ConditionalHelper::checkHelpdeskRole(auth()->user()->role_id) && $data->helpdesk_status != 'DONE' && $data->helpdesk_status != 'CLOSED';
-        // $isAdmin = ConditionalHelper::checkAdminRole(auth()->user()->role_id) && $doneStatusConditional;
+        $doneStatusConditional = ConditionalHelper::checkHelpdeskDoneStatus($data->helpdesk_status);
+        $isHelpdesk = has('omc.dashboard.process_helpdesk') && $data->helpdesk_status != 'DONE' && $data->helpdesk_status != 'CLOSED';
+        $isAdmin = has('omc.dashboard.process_admin') && $doneStatusConditional;
         // $isHelpdeskSupervisor = ConditionalHelper::checkHelpdeskSupervisorRole(auth()->user()->role_id);
         // $isAdminSupervisor = ConditionalHelper::checkAdminSupervisorRole(auth()->user()->role_id) && $doneStatusConditional;
         // $isSuperAdmin = ConditionalHelper::checkSuperAdminRole(auth()->user()->role_id);
 
+        if($isHelpdesk){
+            $action .= '<a href="'.route('secure.helpdesk.project.remote.form', ['id' => $data->project_id, 'expense_report_remote_id' => $data->id]).'" class="btn btn-primary">
+                <i class="dripicons-enter"></i> Proses Helpdesk
+            </a>';
+        }else if($isAdmin) {
+            $action .= '<a href="'.route('secure.admin.project.remote.form', ['id' => $data->project_id, 'expense_report_remote_id' => $data->id]).'" class="btn btn-primary">
+                <i class="dripicons-enter"></i> Proses Admin
+            </a>';
+        }else {
+            $action .= '-';
+        }
+
+        // TODO: PREVIOUS CODE, NEED TO CHECK MORE CONDITION
         // if($isHelpdesk || $isHelpdeskSupervisor || $isSuperAdmin){
         //     if (
         //         ($isHelpdesk && !ConditionalHelper::checkHelpdeskDoneStatus($data->helpdesk_status)) || 
@@ -204,14 +215,6 @@ class DatatableHelper{
         // $action .= '<a href="'.route('admin.project.remote.form', ['expense_location_id' => $data->id]).'" class="btn btn-success">
         //     <i class="dripicons-enter"></i> Proses Admin
         // </a>' ;
-        $action .= '<a href="'.route('secure.helpdesk.project.remote.form', ['id' => $data->project_id, 'expense_report_remote_id' => $data->id]).'" class="btn btn-primary">
-            <i class="dripicons-enter"></i> Proses Helpdesk
-        </a>';
-        $action .= '</br>';
-        $action .= '</br>';
-        $action .= '<a href="'.route('secure.admin.project.remote.form', ['id' => $data->project_id, 'expense_report_remote_id' => $data->id]).'" class="btn btn-primary">
-            <i class="dripicons-enter"></i> Proses Admin
-        </a>';
         // $action .= '<a href="'.route('helpdesk.ticket.start', $data->ticket_id).'" class="btn btn-success">
         //     <i class="mdi mdi-timer-play"></i>
         //     Mulai Waktu
