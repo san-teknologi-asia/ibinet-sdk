@@ -16,6 +16,7 @@ class ApprovalService{
     private const NO_ROLE_CONDITION = 'NO-ROLE-CONDITION';
     private const SAME_REGION = 'SAME-REGION';
     private const SAME_PROJECT = 'SAME-PROJECT';
+    private const SAME_HOMEBASE = 'SAME-HOMEBASE';
 
     private const REF_EXPENSE = 'EXPENSE';
     private const REF_FUND_REQUEST = 'FUND_REQUEST';
@@ -429,6 +430,16 @@ class ApprovalService{
                 })
                 ->where('is_active', true)
                 ->first();
+        } else if ($status == self::SAME_HOMEBASE){
+            // $nextAssignmentUser = User::where('role_id', $roleId)
+            //     ->whereHas('homebase', function($query) use ($homebaseId) {
+            //         $query->where('homebases.id', $homebaseId);
+            //     })
+            //     ->where('is_active', true)
+            //     ->first();
+            $nextAssignmentUser = null;
+        } else{
+            $nextAssignmentUser = null;
         }
 
         return $nextAssignmentUser;
