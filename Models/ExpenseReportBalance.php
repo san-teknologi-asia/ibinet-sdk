@@ -96,8 +96,7 @@ class ExpenseReportBalance extends Model
     {
         return $this->hasOne(ApprovalActivity::class, 'ref_id', 'id')
             ->where('ref_type', 'EXPENSE')
-            ->whereIn('status', ['PENDING', 'REVISION'])
-            ->latest('created_at');
+            ->orderBy('created_at', 'desc');
     }
 
     /**
