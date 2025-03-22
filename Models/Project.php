@@ -70,4 +70,14 @@ class Project extends Model
     {
         return $this->belongsToMany(Region::class, 'project_regions', 'project_id', 'region_id');
     }
+    
+    /**
+     * The user that belong to the Project
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\BelongsToMany
+     */
+    public function users()
+    {
+        return $this->belongsToMany('App\Models\User', 'user_projects', 'project_id', 'user_id');
+    }
 }
