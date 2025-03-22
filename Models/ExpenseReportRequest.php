@@ -55,7 +55,7 @@ class ExpenseReportRequest extends Model
     {
         return $this->hasOne(ApprovalActivity::class, 'ref_id', 'id')
             ->where('ref_type', 'FUND_REQUEST')
-            ->latest('created_at');
+            ->orderBy('created_at', 'desc');
     }
 
     public function project()

@@ -202,7 +202,7 @@ class ApprovalService{
 
             $projectId = null;
             $regionId = null;
-            if($currentActivity->step > 0){
+            if((int)$currentActivity->step > 0){
                 if ($approvalStatus == 'REVISION'){
                     $nextStepOrder = $currentStep->order - 1;
                 } else{
@@ -268,45 +268,44 @@ class ApprovalService{
                     $projectId = $defineLocation['projectId'];
                     $regionId = $defineLocation['regionId'];
                 } else{
-                    return [
-                        'success' => false,
-                        'message' => 'Location type is not valid'
-                    ];
+                    throw new \Exception('Location type is not valid');
                 }
 
                 // Check for next step
                 $numberOfNextStep = count($nextStep);
                 if($numberOfNextStep == 0){
                     $isLastStep = true;
-                } elseif ($numberOfNextStep == 1){
-                    $nextStep = $nextStep[0];
-                } elseif ($numberOfNextStep > 1){ // Condition For Multiple Step Ahead
+                } elseif ($numberOfNextStep >= 1){ // Condition For Multiple Step Ahead
+                    $isMatch = false;
                     foreach ($nextStep as $key => $value) {
                         $condition = $value->condition;
                         $conditionValue = $value->condition_value;
 
                         if (eval("return \$expenseReportAmount $condition $conditionValue;")) {
+                            $isMatch = true;
                             $nextStep = $value; // Assign the current step as the next step
                             break; // Exit the loop once the condition is satisfied
                         }
                     }
-                }
 
-                $nextAssignmentUser = self::fetchUserByCondition(
-                    $nextStep->status,
-                    $nextStep->role_id,
-                    $projectId,
-                    $regionId
-                );
-
-                if ($nextAssignmentUser == null){
-                    return [
-                        'success' => false,
-                        'message' => 'User not available'
-                    ];
+                    if (!$isMatch){
+                        $nextStep = [];
+                        $isLastStep = true;
+                    }
                 }
 
                 if (!$isLastStep){
+                    $nextAssignmentUser = self::fetchUserByCondition(
+                        $nextStep->status,
+                        $nextStep->role_id,
+                        $projectId,
+                        $regionId
+                    );
+    
+                    if ($nextAssignmentUser == null){
+                        throw new \Exception('User not available');
+                    }
+
                     ApprovalActivity::find($currentActivity->id)->update([
                         'processed_at' => now(),
                         'status' => $data['status'],
@@ -343,30 +342,32 @@ class ApprovalService{
                         ]);
                     }
                 } else{
-                    ApprovalActivity::find($currentActivity->id)->update([
+                    $updateLastStep = ApprovalActivity::find($currentActivity->id)->update([
                         'processed_at' => now(),
                         'status' => $data['status'],
                         'note' => $data['note'],
                         'process_at' => now()
                     ]);
 
-                    ApprovalActivity::create([
-                        'ref_id' => $refId,
-                        'ref_type' => $refType,
-                        'approval_flow_id' => $approvalFlow,
-                        'approval_flow_detail_id' => null,
-                        'step' => $nextStepOrder,
-                        'step_name' => "Approval Finished With ".$data['status']." By ".$currentActivity->user->name,
-                        'status' => 'END',
-                        'role_id' => $currentActivity->role_id,
-                        'user_id' => $currentActivity->user_id,
-                        'note' => $data['note'],
-                        'process_at' => now()
-                    ]);
-
-                    $expenseReportRequest->update([
-                        'status' => $data['status']
-                    ]);
+                    if ($updateLastStep){
+                        ApprovalActivity::create([
+                            'ref_id' => $refId,
+                            'ref_type' => $refType,
+                            'approval_flow_id' => $approvalFlow,
+                            'approval_flow_detail_id' => null,
+                            'step' => $nextStepOrder,
+                            'step_name' => "Approval Finished With ".$data['status']." By ".$currentActivity->user->name,
+                            'status' => 'END',
+                            'role_id' => $currentActivity->role_id,
+                            'user_id' => $currentActivity->user_id,
+                            'note' => "Approval Finish With Last Note : ".$data['note'],
+                            'process_at' => now()
+                        ]);
+    
+                        $expenseReportRequest->update([
+                            'status' => $data['status']
+                        ]);
+                    }
                 }
             }
 
@@ -375,15 +376,9 @@ class ApprovalService{
                 'message' => 'Approval has been made'
             ];
         } catch (\Exception $e){
-            return [
-                'success' => false,
-                'message' => "Error on line {$e->getLine()}: {$e->getMessage()}"
-            ];
+            throw new \Exception("Error on line {$e->getLine()}: {$e->getMessage()}");
         } catch (\Throwable $e) {
-            return [
-                'success' => false,
-                'message' => "Error on line {$e->getLine()}: {$e->getMessage()}"
-            ];
+            throw new \Exception("Error on line {$e->getLine()}: {$e->getMessage()}");
         }
     }
 
