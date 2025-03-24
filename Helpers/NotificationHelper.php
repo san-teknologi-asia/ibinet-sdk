@@ -7,10 +7,7 @@ use Ibinet\Models\User;
 use Ibinet\Models\UserDevice;
 use Illuminate\Support\Facades\Log;
 use Kreait\Firebase\Factory;
-use Kreait\Firebase\Messaging\AndroidConfig;
-use Kreait\Firebase\Messaging\ApnsConfig;
 use Kreait\Firebase\Messaging\CloudMessage;
-use Kreait\Firebase\Messaging\Notification as FirebaseNotification;
 use Ramsey\Uuid\Uuid;
 
 class NotificationHelper
@@ -32,7 +29,7 @@ class NotificationHelper
 
         $userDevices = UserDevice::where('user_id', $data['user_id'])->pluck('device_id')->toArray();
 
-        self::sendNotification($userDevices, $data, $title, $body);
+        return self::sendNotification($userDevices, $data, $title, $body);
     }
 
     /**
@@ -67,7 +64,7 @@ class NotificationHelper
 
         Notification::insert($notifications);
 
-        self::sendNotification($userDevices, $data, $title, $body);
+        return self::sendNotification($userDevices, $data, $title, $body);
     }
 
     /**
@@ -76,70 +73,47 @@ class NotificationHelper
      * @param array $deviceTokens
      * @param array $data_arr
      * @param string $title
-     * @param string $message
+     * @param string $body
+     * @return array
      */
-    public static function sendNotification($deviceTokens, $data_arr, $title, $message)
+    public static function sendNotification($deviceTokens, $data_arr, $title, $body)
     {
-        // remove array value null
+        // Remove null values from device tokens
         $deviceTokens = array_filter($deviceTokens);
 
         if (empty($deviceTokens)) {
-            return;
+            return ['error' => 'No device tokens provided'];
         }
 
         $factory = (new Factory)->withServiceAccount(storage_path(env('FIREBASE_CREDENTIALS')));
-
         $messaging = $factory->createMessaging();
 
-        $config = AndroidConfig::fromArray([
-            'priority' => 'high',
-            'notification' => [
-                'notification_priority' => 'PRIORITY_MAX'
+        $message = CloudMessage::new()->fromArray([
+            "data" => [
+                "title"             => $title,
+                "body"              => $body,
+                "image_url"         => null,
+                "expense_report_id" => $data_arr['expense_report_id'],
+                "transaction_id"    => $data_arr['transaction_id'],
+                "timestamp"         => now()->toDateTimeString(),
             ],
+            "android" => [
+                "priority" => 'high',
+            ]
         ]);
 
-        $apnsConfig = ApnsConfig::fromArray([
-            'headers' => [
-                'apns-priority' => '10',
-                'apns-push-type' => 'alert'
-            ],
-            'payload' => [
-                'aps' => [
-                    'alert' => [
-                        'title' => $title,
-                        'body' => $message,
-                    ],
-                    'sound' => 'NOTIF_BAIK_IOS.wav',
-                    'mutable-content' => 1,
-                    'content-available' => 1,
-                    'category' => 'CONFIRMATION_CATEGORY',
-                ],
-            ],
-        ]);
-
-        $data_arr['title'] = $title;
-        $data_arr['message'] = $message;
-
-        // $message = new RawMessageFromArray([
-        //     'data' => [
-        //         "data_arr" => json_encode($data_arr)
-        //     ],
-        //     "android" => [
-        //         "priority" => "high"
-        //     ]
-        // ]);
-
-        $message = CloudMessage::new()
-            ->withNotification(FirebaseNotification::create($title, $message))
-            ->withData($data_arr);
-        $message = $message->withAndroidConfig($config);
+        // Send Multicast Notification
+        $sendReport = $messaging->sendMulticast($message, $deviceTokens);
 
         // Save full log from fcm token until data
         Log::channel('notification')->info('FCM Token: ' . json_encode($deviceTokens));
         Log::channel('notification')->info('Data: ' . json_encode($data_arr));
+        Log::channel('notification')->info('Result: ' . json_encode($sendReport));
 
-        $messaging->sendMulticast($message, $deviceTokens);
-
-        return true;
+        return [
+            'success_count' => $sendReport->successes()->count(),
+            'failure_count' => $sendReport->failures()->count(),
+            'errors'        => $sendReport->failures()->map(fn($failure) => $failure->error()->getMessage()),
+        ];
     }
 }
