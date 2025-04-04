@@ -24,141 +24,236 @@ class ApprovalService{
     /**
      * Create approval step initialization
      *
-     * @return void
+     * @param string $refId Reference ID of the request
+     * @param string $refType Type of the request (EXPENSE, FUND_REQUEST)
+     * @param array $data Approval data containing role_id, user_id, note
+     * @return array Status and message of the initialization process
      */
     public static function initStep($refId, $refType, $data)
     {
-        $projectId = null;
-        $regionId = null;
-
-        if($refType == self::REF_EXPENSE){
-            $approvalFlow = setting('APPROVAL_EXPENSE_ER');
-
-            // first step
-            $firstStep = ApprovalFlowDetail::where('approval_flow_id', $approvalFlow)
-                ->orderBy('order')
-                ->first();
-
-            // get second step
-            $secondStep = ApprovalFlowDetail::where('approval_flow_id', $approvalFlow)
-                ->where('order', $firstStep->order)
-                ->get();
-
-            // expense report balance
-            $expenseReportBalance = ExpenseReportBalance::find($refId);
-
-            $defineLocation = self::defineProjectAndRegionByLocation($expenseReportBalance->location_type, $expenseReportBalance->location_id);
-
-            if($defineLocation != null){
-                $projectId = $defineLocation['projectId'];
-                $regionId = $defineLocation['regionId'];
-            } else{
+        try {
+            // Get reference data
+            list($approvalFlow, $entityData, $entityAmount, $defineLocation) = self::getInitialReferenceData($refId, $refType);
+            
+            if (!$entityData) {
+                return [
+                    'success' => false,
+                    'message' => 'Reference entity not found'
+                ];
+            }
+            
+            if ($defineLocation == null) {
                 return [
                     'success' => false,
                     'message' => 'Location type is not valid'
                 ];
             }
-        } else if($refType == self::REF_FUND_REQUEST){
-            $approvalFlow = setting('APPROVAL_FUND_REQUEST');
-
-            // first step
+            
+            $projectId = $defineLocation['projectId'];
+            $regionId = $defineLocation['regionId'];
+            
+            // Get first step in approval flow
             $firstStep = ApprovalFlowDetail::where('approval_flow_id', $approvalFlow)
                 ->orderBy('order')
                 ->first();
-
-            // get second step
-            $secondStep = ApprovalFlowDetail::where('approval_flow_id', $approvalFlow)
-                ->where('order', $firstStep->order)
-                ->get();
-
-            // expense report balance
-            $expenseReportRequest = ExpenseReportRequest::find($refId);
-
-            $defineLocation = self::defineProjectAndRegionByFundRequest($expenseReportRequest);
-
-            if($defineLocation != null){
-                $projectId = $defineLocation['projectId'];
-                $regionId = $defineLocation['regionId'];
-            } else{
+                
+            if (!$firstStep) {
                 return [
                     'success' => false,
-                    'message' => 'Location type is not valid'
+                    'message' => 'Approval flow steps not found'
                 ];
+            }
+            
+            // Get next step(s) - could be multiple depending on conditions
+            $nextSteps = ApprovalFlowDetail::where('approval_flow_id', $approvalFlow)
+                ->where('order', $firstStep->order)
+                ->get();
+                
+            // Determine the appropriate next step based on conditions
+            $nextStep = self::determineNextStep($nextSteps, $refType, $entityAmount);
+            
+            if (!$nextStep) {
+                return [
+                    'success' => false,
+                    'message' => 'Could not determine next approval step'
+                ];
+            }
+            
+            // Find the next assignee based on conditions
+            $nextAssignmentUser = self::fetchUserByCondition(
+                $nextStep->status,
+                $nextStep->role_id,
+                $projectId,
+                $regionId
+            );
+            
+            if (!$nextAssignmentUser) {
+                return [
+                    'success' => false,
+                    'message' => 'No user available for approval. Please check role configuration.'
+                ];
+            }
+            
+            // Create timestamped entries with microseconds to avoid duplicate timestamps
+            $now = now();
+            $microTime = microtime(true);
+            
+            // Create initiator activity
+            ApprovalActivity::create([
+                'ref_id' => $refId,
+                'ref_type' => $refType,
+                'approval_flow_id' => $approvalFlow,
+                'approval_flow_detail_id' => null,
+                'step' => 0,
+                'step_name' => self::getInitStepName($refType),
+                'status' => 'ACTION', // ACTION: Just For First Step
+                'role_id' => $data['role_id'],
+                'user_id' => $data['user_id'],
+                'note' => $data['note'],
+                'process_at' => $now,
+                'order' => 0
+            ]);
+            
+            // Create first approval step activity
+            ApprovalActivity::create([
+                'ref_id' => $refId,
+                'ref_type' => $refType,
+                'approval_flow_id' => $approvalFlow,
+                'approval_flow_detail_id' => $nextStep->id,
+                'step' => $nextStep->order,
+                'step_name' => $nextStep->name,
+                'status' => 'PENDING',
+                'role_id' => $nextStep->role_id,
+                'user_id' => $nextAssignmentUser->id,
+                'process_at' => $now,
+                'order' => 1
+            ]);
+            
+            // Update entity status
+            // self::updateEntityStatus($refType, $refId, 'PENDING');
+            
+            return [
+                'success' => true,
+                'message' => 'Approval process has been initialized'
+            ];
+        } catch (\Exception $e) {
+            \Log::error("Approval initialization error: {$e->getMessage()} on line {$e->getLine()}");
+            return [
+                'success' => false,
+                'message' => "Error initializing approval: {$e->getMessage()}"
+            ];
+        }
+    }
+    
+    /**
+     * Get initial reference data for approval initialization
+     * 
+     * @param string $refId Reference ID
+     * @param string $refType Reference type
+     * @return array Array containing approval flow, entity data, amount, and location
+     */
+    private static function getInitialReferenceData($refId, $refType)
+    {
+        $approvalFlow = null;
+        $entityData = null;
+        $entityAmount = 0;
+        $defineLocation = null;
+        
+        if ($refType == self::REF_EXPENSE) {
+            $approvalFlow = setting('APPROVAL_EXPENSE_ER');
+            $entityData = ExpenseReportBalance::find($refId);
+            
+            if ($entityData) {
+                $entityAmount = $entityData->credit;
+                $defineLocation = self::defineProjectAndRegionByLocation($entityData->location_type, $entityData->location_id);
+            }
+        } else if ($refType == self::REF_FUND_REQUEST) {
+            $approvalFlow = setting('APPROVAL_FUND_REQUEST');
+            $entityData = ExpenseReportRequest::find($refId);
+            
+            if ($entityData) {
+                $entityAmount = $entityData->amount;
+                $defineLocation = self::defineProjectAndRegionByFundRequest($entityData);
             }
         }
-
-        if (count($secondStep) == 1){
-            $secondStep = $secondStep[0];
-        } else if (count($secondStep) > 1){
-            // TECH DEBT : Adding process and ask if when request fund it should place location id
-            foreach ($secondStep as $key => $value) {
-                if($value->condition_id == 'ER_AMOUNT_FUND_REQUEST'){
-                    $condition = $value->condition;
-                    $conditionValue = $value->condition_value;
-
-                    // Build a dynamic PHP condition
-                    if (eval("return \$expenseReportRequest->amount $condition $conditionValue;")) {
-                        $secondStep = $value; // Assign the current step as the next step
-                        break; // Exit the loop once the condition is satisfied
+        
+        return [$approvalFlow, $entityData, $entityAmount, $defineLocation];
+    }
+    
+    /**
+     * Determine which next step to use based on conditions
+     * 
+     * @param Collection $nextSteps Collection of possible next steps
+     * @param string $refType Reference type
+     * @param float $entityAmount Amount for condition checking
+     * @return object|null Selected next step or null if none found
+     */
+    private static function determineNextStep($nextSteps, $refType, $entityAmount)
+    {
+        if ($nextSteps->count() == 1) {
+            return $nextSteps->first();
+        }
+        
+        if ($nextSteps->count() > 1) {
+            // Look for a step with matching conditions
+            foreach ($nextSteps as $step) {
+                if (empty($step->condition) || empty($step->condition_value)) {
+                    continue;
+                }
+                
+                $condition = $step->condition;
+                $conditionValue = $step->condition_value;
+                
+                if ($step->condition_id == 'ER_AMOUNT_FUND_REQUEST' && $refType == self::REF_FUND_REQUEST) {
+                    if (eval("return \$entityAmount $condition $conditionValue;")) {
+                        return $step;
                     }
-                } else{
-                    $condition = $value->condition;
-                    $conditionValue = $value->condition_value;
-
-                    // Build a dynamic PHP condition
-                    if (eval("return \$expenseReportBalance->credit $condition $conditionValue;")) {
-                        $secondStep = $value; // Assign the current step as the next step
-                        break; // Exit the loop once the condition is satisfied
+                } else {
+                    if (eval("return \$entityAmount $condition $conditionValue;")) {
+                        return $step;
                     }
                 }
             }
+            
+            // If no matching condition found, return the first step as fallback
+            return $nextSteps->first();
         }
-
-        $nextAssignmentUser = self::fetchUserByCondition(
-            $secondStep->status,
-            $secondStep->role_id,
-            $projectId,
-            $regionId
-        );
-
-        if ($nextAssignmentUser == null){
-            return [
-                'success' => false,
-                'message' => 'User not available'
-            ];
+        
+        return null;
+    }
+    
+    /**
+     * Get appropriate step name based on reference type
+     * 
+     * @param string $refType Reference type
+     * @return string Step name
+     */
+    private static function getInitStepName($refType)
+    {
+        if ($refType == self::REF_EXPENSE) {
+            return "Expense Report Request Initialization";
+        } else if ($refType == self::REF_FUND_REQUEST) {
+            return "Fund Request Initialization";
         }
-
-        ApprovalActivity::create([
-            'ref_id' => $refId,
-            'ref_type' => $refType,
-            'approval_flow_id' => $approvalFlow,
-            'approval_flow_detail_id' => null,
-            'step' => 0,
-            'step_name' => "Expense Report Request Initialization",
-            'status' => 'ACTION', // ACTION : Just For First Step
-            'role_id' => $data['role_id'],
-            'user_id' => $data['user_id'],
-            'note' => $data['note'],
-            'process_at' => now()
-        ]);
-
-        ApprovalActivity::create([
-            'ref_id' => $refId,
-            'ref_type' => $refType,
-            'approval_flow_id' => $approvalFlow,
-            'approval_flow_detail_id' => $secondStep->id,
-            'step' => $secondStep->order,
-            'step_name' => $secondStep->name,
-            'status' => 'PENDING',
-            'role_id' => $secondStep->role_id,
-            'user_id' => $nextAssignmentUser->id,
-            'process_at' => now()
-        ]);
-
-        return [
-            'success' => true,
-            'message' => 'Approval has been made'
-        ];
+        
+        return "Request Initialization";
+    }
+    
+    /**
+     * Update entity status based on reference type
+     * 
+     * @param string $refType Reference type
+     * @param string $refId Reference ID
+     * @param string $status Status to set
+     * @return void
+     */
+    private static function updateEntityStatus($refType, $refId, $status)
+    {
+        if ($refType == self::REF_EXPENSE) {
+            ExpenseReportBalance::where('id', $refId)->update(['status' => $status]);
+        } else if ($refType == self::REF_FUND_REQUEST) {
+            ExpenseReportRequest::where('id', $refId)->update(['status' => $status]);
+        }
     }
 
     /**
@@ -182,28 +277,33 @@ class ApprovalService{
                 ];
             }
             
-            // Validate if revision is allowed
-            if ($approvalStatus == 'REVISION') {
-                $revisionCount = ApprovalRevisionHistory::where('ref_id', $refId)
-                    ->where('ref_type', $refType)
-                    ->count();
+            if ($currentActivity->step - 1 == 1){
+                // Validate if revision is allowed
+                if ($approvalStatus == 'REVISION') {
+                    $revisionCount = ApprovalRevisionHistory::where('ref_id', $refId)
+                        ->where('ref_type', $refType)
+                        ->count();
+                        
+                    if ($revisionCount > 0) {
+                        return [
+                            'success' => false,
+                            'message' => 'This request has already been revised'
+                        ];
+                    }
+
+                    $previousData = self::fetchReleatedData($refId, $refType);
                     
-                if ($revisionCount > 0) {
-                    return [
-                        'success' => false,
-                        'message' => 'This request has already been revised'
-                    ];
+                    // Record revision history
+                    ApprovalRevisionHistory::create([
+                        'ref_id' => $refId,
+                        'ref_type' => $refType,
+                        'approval_activity_id' => $currentActivity->id,
+                        'user_id' => auth()->id(),
+                        'data' => $previousData,
+                        'note' => $data['note'],
+                        'created_at' => now()
+                    ]);
                 }
-                
-                // Record revision history
-                ApprovalRevisionHistory::create([
-                    'ref_id' => $refId,
-                    'ref_type' => $refType,
-                    'approval_activity_id' => $currentActivity->id,
-                    'user_id' => auth()->id(),
-                    'note' => $data['note'],
-                    'created_at' => now()
-                ]);
             }
             
             // Get reference data and location information
@@ -273,6 +373,7 @@ class ApprovalService{
             'role_id' => $currentActivity->role_id,
             'user_id' => $currentActivity->user_id,
             'note' => $data['note'],
+            'order' => $currentActivity->order + 1,
             'process_at' => now()
         ]);
         
@@ -326,21 +427,21 @@ class ApprovalService{
                 'role_id' => $firstActivity->role_id,
                 'user_id' => $firstActivity->user_id,
                 'note' => "Revision requested: " . $data['note'],
-                'process_at' => now()
+                'process_at' => now(),
+                'order' => $currentActivity->order + 1
             ]);
         } else {
-            // Find previous step
-            $previousStepOrder = $currentStep->order - 1;
-            $previousStep = ApprovalFlowDetail::where('approval_flow_id', $currentActivity->approval_flow_id)
-                ->where('order', $previousStepOrder)
-                ->first();
-                
-            if (!$previousStep) {
+            // Find previous step using our new function
+            $previousStepResult = self::findPreviousConditionalStep($refId, $refType, $currentActivity, $currentStep);
+            
+            if (!$previousStepResult['success']) {
                 return [
                     'success' => false,
-                    'message' => 'Previous approval step not found'
+                    'message' => $previousStepResult['message']
                 ];
             }
+            
+            $previousStep = $previousStepResult['step'];
             
             // Find previous approver
             $previousActivity = ApprovalActivity::where('ref_id', $refId)
@@ -384,21 +485,142 @@ class ApprovalService{
                 'role_id' => $previousRoleId,
                 'user_id' => $previousUserId,
                 'note' => "Revision requested: " . $data['note'],
+                'order' => $currentActivity->order + 1,
                 'process_at' => now()
             ]);
         }
         
         // Update entity status
-        if ($refType == self::REF_EXPENSE) {
-            ExpenseReportBalance::find($refId)->update(['status' => 'REVISION']);
-        } else if ($refType == self::REF_FUND_REQUEST) {
-            ExpenseReportRequest::find($refId)->update(['status' => 'REVISION']);
-        }
+        // TODO: Consider condition by revision status
         
         return [
             'success' => true,
             'message' => 'Request has been sent for revision'
         ];
+    }
+
+    /**
+     * Find the previous step in the approval flow, considering conditional branching
+     * 
+     * @param string $refId Reference ID
+     * @param string $refType Reference type
+     * @param object $currentActivity Current approval activity
+     * @param object $currentStep Current approval flow step
+     * @return array Result containing success flag, message, and previous step
+     */
+    private static function findPreviousConditionalStep($refId, $refType, $currentActivity, $currentStep)
+    {
+        try {
+            // If we don't have a current step or it's the first step, return null with a message
+            if (!$currentStep || $currentActivity->step <= 1) {
+                return [
+                    'success' => false,
+                    'message' => 'No previous step available',
+                    'step' => null
+                ];
+            }
+            
+            $previousStepOrder = $currentStep->order - 1;
+            
+            // Get all previous steps with the previous order number
+            $previousSteps = ApprovalFlowDetail::where('approval_flow_id', $currentActivity->approval_flow_id)
+                ->where('order', $previousStepOrder)
+                ->get();
+            
+            // If no previous steps found, return error
+            if ($previousSteps->isEmpty()) {
+                return [
+                    'success' => false,
+                    'message' => 'Previous approval step not found',
+                    'step' => null
+                ];
+            }
+            
+            // If only one previous step exists, return it
+            if ($previousSteps->count() == 1) {
+                return [
+                    'success' => true,
+                    'message' => 'Previous step found',
+                    'step' => $previousSteps->first()
+                ];
+            }
+            
+            // Complex case - need to find which conditional branch was taken
+            // Find the actual previous activity to see which step was taken
+            $previousActivity = ApprovalActivity::where('ref_id', $refId)
+                ->where('ref_type', $refType)
+                ->where('step', $previousStepOrder)
+                ->orderBy('created_at', 'desc')
+                ->orderBy('order', 'desc')
+                ->first();
+            
+            if ($previousActivity && $previousActivity->approval_flow_detail_id) {
+                // We found a record of which step was taken
+                $previousStep = ApprovalFlowDetail::find($previousActivity->approval_flow_detail_id);
+                
+                if ($previousStep) {
+                    return [
+                        'success' => true,
+                        'message' => 'Previous step found from activity history',
+                        'step' => $previousStep
+                    ];
+                }
+            }
+            
+            // No activity record found, try to determine based on conditions
+            // Get reference data for condition evaluation
+            list(, $entityData, $entityAmount, ) = self::getReferenceData($refId, $refType);
+            
+            $selectedStep = null;
+            
+            foreach ($previousSteps as $step) {
+                if (empty($step->condition) || empty($step->condition_value)) {
+                    continue;
+                }
+                
+                $condition = $step->condition;
+                $conditionValue = $step->condition_value;
+                
+                // Re-evaluate the condition with the historical entity amount
+                if ($step->condition_id == 'ER_AMOUNT_FUND_REQUEST' && $refType == self::REF_FUND_REQUEST) {
+                    if (eval("return \$entityAmount $condition $conditionValue;")) {
+                        $selectedStep = $step;
+                        break;
+                    }
+                } else {
+                    if (eval("return \$entityAmount $condition $conditionValue;")) {
+                        $selectedStep = $step;
+                        break;
+                    }
+                }
+            }
+            
+            // If no condition matched, take the first step (fallback)
+            if (!$selectedStep && $previousSteps->isNotEmpty()) {
+                $selectedStep = $previousSteps->first();
+            }
+            
+            if ($selectedStep) {
+                return [
+                    'success' => true,
+                    'message' => 'Previous step determined by conditions',
+                    'step' => $selectedStep
+                ];
+            }
+            
+            return [
+                'success' => false,
+                'message' => 'Could not determine previous step',
+                'step' => null
+            ];
+        } catch (\Exception $e) {
+            \Log::error("Error finding previous step: {$e->getMessage()} on line {$e->getLine()}");
+            return [
+                'success' => false,
+                'message' => "Error finding previous step: {$e->getMessage()}",
+                'step' => null
+            ];
+        }
     }
 
     /**
@@ -442,7 +664,8 @@ class ApprovalService{
                 'role_id' => $currentActivity->role_id,
                 'user_id' => $currentActivity->user_id,
                 'note' => "Approval completed with final note: " . $data['note'],
-                'process_at' => now()
+                'process_at' => now(),
+                'order' => $currentActivity->order + 1
             ]);
             
             // Update entity status
@@ -517,6 +740,7 @@ class ApprovalService{
             'role_id' => $nextStep->role_id,
             'user_id' => $nextAssignmentUser->id,
             'note' => null,
+            'order' => $currentActivity->order + 1,
             'process_at' => now()
         ]);
         
@@ -564,10 +788,28 @@ class ApprovalService{
     {
         $currentActivity = ApprovalActivity::where('ref_id', $refId)
             ->where('ref_type', $refType)
-            ->orderBy('created_at', 'desc')
+            ->orderBy('order', 'desc')
             ->first();
 
         return $currentActivity;
+    }
+
+    /**
+     * Fetch releated data for revision histories
+     * 
+     * @param $refId Reference ID
+     * @param $refType Reference type
+     * @return object|null
+     */
+    public static function fetchReleatedData($refId, $refType)
+    {
+        if ($refType == self::REF_EXPENSE) {
+            return ExpenseReportBalance::find($refId);
+        } else if ($refType == self::REF_FUND_REQUEST) {
+            return ExpenseReportRequest::find($refId);
+        }
+
+        return null;
     }
 
     /**
