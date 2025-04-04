@@ -9,7 +9,7 @@ use Ramsey\Uuid\Uuid;
 class ExpenseReportRemote extends Model
 {
     use HasFactory;
-    
+
     protected $table = 'expense_report_remotes';
 
     protected $keyType = 'string';
@@ -46,18 +46,23 @@ class ExpenseReportRemote extends Model
         return $this->belongsTo('Ibinet\Models\Remote', 'remote_id');
     }
 
-    public function schedule() 
+    public function schedule()
     {
         return $this->belongsTo('Ibinet\Models\Schedule', 'schedule_id');
     }
 
-    public function expenseReport() 
+    public function expenseReport()
     {
         return $this->belongsTo('Ibinet\Models\ExpenseReport', 'expense_report_id');
     }
 
-    public function workType() 
+    public function workType()
     {
         return $this->belongsTo('Ibinet\Models\WorkType', 'work_type_id');
+    }
+
+    public function remoteFinance()
+    {
+        return $this->hasOne('Ibinet\Models\RemoteFinance', 'expense_report_remote_id');
     }
 }
