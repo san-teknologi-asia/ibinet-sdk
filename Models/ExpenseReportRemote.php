@@ -65,4 +65,9 @@ class ExpenseReportRemote extends Model
     {
         return $this->hasOne('Ibinet\Models\RemoteFinance', 'expense_report_remote_id');
     }
+
+    public function remoteHelpdesk()
+    {
+        return $this->hasOne('Ibinet\Models\RemoteHelpdesk', 'expense_report_id');
+    }
 }
