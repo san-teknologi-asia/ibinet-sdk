@@ -21,13 +21,13 @@ class DatatableHelper
     public static function expenseReportLocationInfo($data)
     {
         $text = "";
-        $text .= "<b>Nama Project : </b>" . ($data->project->name ?? '-') . "<br/>";
-        $text .= "<b>Nomor ER : </b>" . ($data->expenseReport->code ?? '-') . "<br/>";
-        $text .= "<b>Teknisi : </b>" . ($data->expenseReport->assignmentTo->name ?? '-') . "<br/>";
-        $text .= "<b>Pekerjaan : </b>" . ($data->workType->name ?? '-') . "<br/>";
+        $text .= "<b>Project Name : </b>" . ($data->project->name ?? '-') . "<br/>";
+        $text .= "<b>ER Number : </b>" . ($data->expenseReport->code ?? '-') . "<br/>";
+        $text .= "<b>Technician : </b>" . ($data->expenseReport->assignmentTo->name ?? '-') . "<br/>";
+        $text .= "<b>Work Type : </b>" . ($data->workType->name ?? '-') . "<br/>";
         $text .= "<b>Home Base : </b>" . ($data->home_base ?? '-') . "<br/>";
-        $text .= "<b>Referensi Tiket : </b>" . ($data->ticket->code ?? '-') . "(" . ($data->ticket->client_code ?? '-') . ")<br/>";
-        $text .= "<b>Kunjungan : </b>" . ($data->phase ?? '-') . "<br/>";
+        $text .= "<b>Ticket Ref : </b>" . ($data->ticket->code ?? '-') . "(" . ($data->ticket->client_code ?? '-') . ")<br/>";
+        $text .= "<b>Visit : </b>" . ($data->phase ?? '-') . "<br/>";
         return $text;
     }
 
@@ -59,7 +59,7 @@ class DatatableHelper
             $text = "<b class='text-primary'>{$remote->name}</b><br/>";
             $text .= "<b>IP LAN : </b>" . $remote->ip_lan . "<br/>";
             $text .= "<b>Site ID : </b>" . ($remote->site_id ? $remote->site_id : "-") . "<br/>";
-            $text .= "<b>Unit Kerja : </b>" . ($remote->workUnit->name ?? "-") . "<br/>";
+            $text .= "<b>Work Unit : </b>" . ($remote->workUnit->name ?? "-") . "<br/>";
 
             return $text;
         } else {
@@ -96,10 +96,10 @@ class DatatableHelper
             $taskDate = date('d F Y H:i', strtotime($data->admin_process_date));
         }
 
-        $text .= "<b>Tanggal Schedule</b> : {$scheduleDate}<br/>";
-        $text .= "<b>Tanggal Kunjungan</b> : {$visitDate}<br/>";
-        $text .= "<b>Tanggal Progress Helpdesk</b> : {$progressDate}<br/>";
-        $text .= "<b>Tanggal Task</b> : {$taskDate}<br/>";
+        $text .= "<b>Schedule Date</b> : {$scheduleDate}<br/>";
+        $text .= "<b>Visit Date</b> : {$visitDate}<br/>";
+        $text .= "<b>Progress Helpdesk Date</b> : {$progressDate}<br/>";
+        $text .= "<b>Task Date</b> : {$taskDate}<br/>";
 
         if ($data->ticket_id != null) {
             $ticket = Ticket::where('id', $data->ticket_id)->first();
