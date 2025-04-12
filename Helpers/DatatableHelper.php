@@ -13,7 +13,7 @@ class DatatableHelper{
 
     /**
      * Return datatable html
-     * 
+     *
      * @param array $data
      * @return string
      */
@@ -32,8 +32,8 @@ class DatatableHelper{
 
     /**
      * Return datatable html
-     * 
-     * @param array $data
+     *
+     * @param object $data
      * @return string
      */
     public static function expenseReportRemoteInfo($data, $isTicket = false)
@@ -64,7 +64,7 @@ class DatatableHelper{
 
         /**
      * Return datatable html
-     * 
+     *
      * @param $data
      * @return string
      */
@@ -85,7 +85,7 @@ class DatatableHelper{
         // TODO: Not understand where the relation should be
         // if (($data->remoteHelpdesk->process_date ?? null) != null) {
         //     $visitDate = date('d F Y', strtotime($data->remoteHelpdesk->process_date));
-        // } 
+        // }
 
         if($data->admin_process_date != null){
             $taskDate = date('d F Y H:i', strtotime($data->admin_process_date));
@@ -106,7 +106,7 @@ class DatatableHelper{
 
     /**
      * Return datatable html
-     * 
+     *
      * @param array $data
      * @return string
      */
@@ -131,7 +131,7 @@ class DatatableHelper{
 
     /**
      * Return datatable html
-     * 
+     *
      * @param $data
      * @return string
      */
@@ -146,11 +146,11 @@ class DatatableHelper{
         // $isSuperAdmin = ConditionalHelper::checkSuperAdminRole(auth()->user()->role_id);
 
         if($isHelpdesk){
-            $action .= '<a href="'.route('secure.helpdesk.project.remote.form', ['id' => $data->project_id, 'expense_report_remote_id' => $data->id]).'" class="btn btn-primary">
+            $action .= '<a href="'.route('secure.helpdesk.project.remote.form', ['expense_report_remote_id' => $data->id]).'" class="btn btn-primary">
                 <i class="dripicons-enter"></i> Proses Helpdesk
             </a>';
         }else if($isAdmin) {
-            $action .= '<a href="'.route('secure.admin.project.remote.form', ['id' => $data->project_id, 'expense_report_remote_id' => $data->id]).'" class="btn btn-primary">
+            $action .= '<a href="'.route('secure.admin.project.remote.form', ['expense_report_remote_id' => $data->id]).'" class="btn btn-primary">
                 <i class="dripicons-enter"></i> Proses Admin
             </a>';
         }else {
@@ -160,8 +160,8 @@ class DatatableHelper{
         // TODO: PREVIOUS CODE, NEED TO CHECK MORE CONDITION
         // if($isHelpdesk || $isHelpdeskSupervisor || $isSuperAdmin){
         //     if (
-        //         ($isHelpdesk && !ConditionalHelper::checkHelpdeskDoneStatus($data->helpdesk_status)) || 
-        //         $isHelpdeskSupervisor || 
+        //         ($isHelpdesk && !ConditionalHelper::checkHelpdeskDoneStatus($data->helpdesk_status)) ||
+        //         $isHelpdeskSupervisor ||
         //         $isSuperAdmin
         //         ) {
         //             if (!TimeHelper::checkIfStopClock($data->ticket_id)) {
@@ -171,7 +171,7 @@ class DatatableHelper{
         //                 </a>';
         //             }
         //     }
-           
+
         //     if(TimeHelper::checkIfStopClock($data->ticket_id)){
         //         $latestTimer = TicketTimer::where('ticket_id', $data->ticket_id)
         //             ->orderBy('created_at', 'desc')
@@ -225,7 +225,7 @@ class DatatableHelper{
 
     /**
      * Ticket status html
-     * 
+     *
      * @param $data
      * @return string
      */
