@@ -23,7 +23,7 @@ class TicketProtest extends Model
 
     public function ticket()
     {
-        return $this->belongsTo('App\Models\Ticket');
+        return $this->belongsTo('Ibinet\Models\Ticket');
     }
 
     /**

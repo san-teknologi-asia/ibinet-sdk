@@ -61,8 +61,8 @@ class Project extends Model
         return $this->belongsToMany(Remote::class, 'project_remotes', 'project_id', 'remote_id');
     }
 
-     /**
-     * The remotes that belong to the Project
+    /**
+     * The regions that belong to the Project
      *
      * @return \Illuminate\Database\Eloquent\Relations\BelongsToMany
      */
@@ -70,7 +70,7 @@ class Project extends Model
     {
         return $this->belongsToMany(Region::class, 'project_regions', 'project_id', 'region_id');
     }
-    
+
     /**
      * The user that belong to the Project
      *
@@ -78,6 +78,16 @@ class Project extends Model
      */
     public function users()
     {
-        return $this->belongsToMany('App\Models\User', 'user_projects', 'project_id', 'user_id');
+        return $this->belongsToMany('Ibinet\Models\User', 'user_projects', 'project_id', 'user_id');
+    }
+
+    /**
+     * The requirements that belong to the Project
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\BelongsToMany
+     */
+    public function requirements()
+    {
+        return $this->belongsToMany('Ibinet\Models\Requirement', 'project_requirements');
     }
 }
