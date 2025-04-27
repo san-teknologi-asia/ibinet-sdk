@@ -13,21 +13,26 @@ use Ramsey\Uuid\Uuid;
 class NotificationHelper
 {
     /**
+     * Send notification
+     *
      * @param string $title title of message
      * @param string $body body or content message
-     * @param string $token user token to send notif
+     * @param array $data
      */
     public static function send($title, $body, $data)
     {
-        Notification::create([
-            'user_id'           => $data['user_id'],
-            'title'             => $title,
-            'body'              => $body,
-            'expense_report_id' => $data['expense_report_id'],
-            'transaction_id'    => $data['transaction_id']
-        ]);
+        $notificationId = Notification::create([
+            'user_id'              => $data['user_id'],
+            'title'                => $title,
+            'body'                 => $body,
+            'expense_report_id'    => $data['expense_report_id'],
+            'transaction_id'       => $data['transaction_id'],
+            'approval_activity_id' => $data['approval_activity_id']
+        ])->id;
 
-        $userDevices = UserDevice::where('user_id', $data['user_id'])->pluck('device_id')->toArray();
+        $data['notification_id'] = $notificationId;
+
+        $userDevices = UserDevice::where('user_id', $data['user_id'])->distinct('device_id')->pluck('device_id')->toArray();
 
         return self::sendNotification($userDevices, $data, $title, $body);
     }
@@ -43,22 +48,23 @@ class NotificationHelper
     {
         $user = User::where('role_id', $data['role_id'])->get();
         $userIds = $user->pluck('id')->toArray();
-        $userDevices = UserDevice::whereIn('user_id', $userIds)->pluck('device_id')->toArray();
+        $userDevices = UserDevice::whereIn('user_id', $userIds)->distinct('device_id')->pluck('device_id')->toArray();
 
         $timestamp = date('Y-m-d H:i:s');
 
         $notifications = [];
         foreach ($userIds as $item) {
             $notifications[] = [
-                'id'                => (string) Uuid::uuid4(),
-                'user_id'           => $item,
-                'title'             => $title,
-                'body'              => $body,
-                'expense_report_id' => $data['expense_report_id'],
-                'transaction_id'    => $data['transaction_id'],
-                'is_read'           => 0,
-                'created_at'        => $timestamp,
-                'updated_at'        => $timestamp
+                'id'                   => (string) Uuid::uuid4(),
+                'user_id'              => $item,
+                'title'                => $title,
+                'body'                 => $body,
+                'expense_report_id'    => $data['expense_report_id'],
+                'transaction_id'       => $data['transaction_id'],
+                'approval_activity_id' => $data['approval_activity_id'],
+                'is_read'              => 0,
+                'created_at'           => $timestamp,
+                'updated_at'           => $timestamp
             ];
         }
 
@@ -90,12 +96,14 @@ class NotificationHelper
 
         $message = CloudMessage::new()->fromArray([
             "data" => [
-                "title"             => $title,
-                "body"              => $body,
-                "image_url"         => null,
-                "expense_report_id" => $data_arr['expense_report_id'],
-                "transaction_id"    => $data_arr['transaction_id'],
-                "timestamp"         => now()->toDateTimeString(),
+                "title"                => $title,
+                "body"                 => $body,
+                "image_url"            => null,
+                "expense_report_id"    => $data_arr['expense_report_id'],
+                "transaction_id"       => $data_arr['transaction_id'],
+                "approval_activity_id" => $data_arr['approval_activity_id'],
+                "notification_id"      => $data_arr['notification_id'],
+                "timestamp"            => now()->toDateTimeString(),
             ],
             "android" => [
                 "priority" => 'high',
