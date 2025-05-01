@@ -8,7 +8,7 @@ use Ibinet\Models\WorkType;
 use Ibinet\Models\Ticket;
 use Ibinet\Models\ExpenseReportRemote;
 use Ibinet\Models\TicketTimer;
-use Ibinet\Helpers\CustomHelper;
+use Ibinet\Helpers\ExpenseReportHelper;
 use Ibinet\Models\ExpenseReportRequest;
 
 class TicketHelper
@@ -38,7 +38,7 @@ class TicketHelper
 
             if(!$activeExpenseReport){
                 $expenseReport = ExpenseReport::create([
-                    'code' => CustomHelper::generateERCode(),
+                    'code' => ExpenseReportHelper::generateERCode(),
                     'name' => $expenseName,
                     'amount' => $ticket->initial_amount ?? 100000,
                     'assignment_to' => $request->user_id,
@@ -63,7 +63,11 @@ class TicketHelper
                 'project_id' => $ticket->project_id,
                 'ticket_id' => $ticket_id,
                 'phase' => $ticket->phase,
-                'work_type_id' => $workType->id
+                'work_type_id' => $workType->id,
+                'schedule_id' => $ticket->id, // TODO: Change it into null
+                'date' => now(),
+                'is_process_helpdesk' => false,
+                'is_process_admin' => false,
             ]);
 
             $checkTimer = TicketTimer::where('ticket_id', $ticket_id)
