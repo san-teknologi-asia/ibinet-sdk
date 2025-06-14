@@ -34,11 +34,8 @@ class DatatableHelper
     /**
      * Return datatable html
      *
-<<<<<<< HEAD
      * @param object $data
-=======
-     * @param array $data
->>>>>>> 6bd9553dbc93b457cb50e5f55a0a998383080358
+     * @param bool $isTicket
      * @return string
      */
     public static function expenseReportRemoteInfo($data, $isTicket = false)
@@ -268,9 +265,9 @@ class DatatableHelper
 
         if ($data->status != 'CANCELED') {
             if ($data->user_id != null) {
-                $statusBadge = '<span class="badge bg-success">Sudah ditugaskan</span>';
+                $statusBadge = '<span class="badge bg-success">Already assigned</span>';
             } else {
-                $statusBadge = '<span class="badge bg-danger">Belum ditugaskan</span>';
+                $statusBadge = '<span class="badge bg-danger">Not yet assigned</span>';
             }
         }
 

@@ -3,7 +3,6 @@
 namespace Ibinet\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use Ibinet\Models\Remote;
 use Ramsey\Uuid\Uuid;
 
 class ExpenseReportLocation extends Model
@@ -20,15 +19,19 @@ class ExpenseReportLocation extends Model
      * @var array
      */
     protected $guarded = [
-        'created_at', 'updated_at'
+        'created_at',
+        'updated_at'
     ];
 
     protected $appends = ['info'];
 
     public function getInfoAttribute()
     {
-        $text = "<b>Region : </b>" . $this->region->name ?? "-" . "<br/>";
-        $text .= "<b>Project : </b>" . $this->project->name ?? "-";
+        $regionName = $this->region->name ?? "-";
+        $projectName = $this->project->name ?? "-";
+
+        $text = "<b>Region : </b>" . $regionName . "<br/>";
+        $text .= "<b>Project : </b>" . $projectName;
 
         return $text;
     }

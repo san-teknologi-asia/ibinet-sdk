@@ -7,12 +7,13 @@ use Carbon\Carbon;
 use Ibinet\Models\Ticket;
 use Ibinet\Helpers\RemoteHelper;
 use DB;
+use Illuminate\Support\Facades\Log;
 
 class TimeHelper{
 
     /**
      * Get work time by ticket id
-     * 
+     *
      * @param String $ticket_id
      * @return String
      */
@@ -34,7 +35,7 @@ class TimeHelper{
             $start = new Carbon($startTime);
             $end = new Carbon($endTime);
 
-            $totalDuration += $end->diffInSeconds($start);
+            $totalDuration += $start->diffInSeconds($end);
         }
 
         // Konversi total durasi ke format jam:menit:detik
@@ -47,7 +48,7 @@ class TimeHelper{
 
     /**
      * Get average fix time
-     * 
+     *
      * @param String $start_date
      * @param String $end_date
      * @return String
@@ -68,14 +69,14 @@ class TimeHelper{
 
     /**
      * Get work time by ticket id
-     * 
+     *
      * @param String $ticket_id
      * @return String
      */
     public static function getAvailabilityPercentage($remote_id, $start_date, $end_date)
     {
         $project_id = session('project_id');
-        
+
         $ticketQuery = Ticket::where('project_id', $project_id)
             ->whereHas('remote', function($query) use ($remote_id) {
                 if ($remote_id == 'all') {
@@ -111,7 +112,7 @@ class TimeHelper{
 
     /**
      * Validate stop clock
-     * 
+     *
      * @param string $id
      * @return boolean
      */

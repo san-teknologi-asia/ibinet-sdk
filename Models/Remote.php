@@ -46,22 +46,22 @@ class Remote extends Model
 
     public function province()
     {
-        return $this->belongsTo('Ibinet\Models\Province', 'province_code');
+        return $this->belongsTo('Ibinet\Models\Province', 'province_code', 'code');
     }
 
     public function city()
     {
-        return $this->belongsTo('Ibinet\Models\City', 'city_code');
+        return $this->belongsTo('Ibinet\Models\City', 'city_code', 'code');
     }
 
     public function district()
     {
-        return $this->belongsTo('Ibinet\Models\District', 'distric_code');
+        return $this->belongsTo('Ibinet\Models\District', 'district_code', 'code');
     }
 
     public function village()
     {
-        return $this->belongsTo('Ibinet\Models\Village', 'village_code');
+        return $this->belongsTo('Ibinet\Models\Village', 'village_code', 'code');
     }
 
     public function serials()
