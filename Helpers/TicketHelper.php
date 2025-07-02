@@ -15,8 +15,6 @@ class TicketHelper
 {
     /**
      * Check and recreate ticket for teknisi
-     *
-     * @return boolean
      */
     public static function assignToExpenseReport($request, $ticket_id)
     {
@@ -64,7 +62,7 @@ class TicketHelper
                 'ticket_id' => $ticket_id,
                 'phase' => $ticket->phase,
                 'work_type_id' => $workType->id,
-                'schedule_id' => $ticket->id, // TODO: Change it into null
+                'schedule_id' => null,
                 'date' => now(),
                 'is_process_helpdesk' => false,
                 'is_process_admin' => false,

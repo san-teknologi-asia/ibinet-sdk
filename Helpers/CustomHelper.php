@@ -153,8 +153,6 @@ class CustomHelper
 
     /**
      * Check and recreate ticket for teknisi
-     *
-     * @return boolean
      */
     public static function assignToExpenseReport($request, $ticket_id)
     {
@@ -171,11 +169,7 @@ class CustomHelper
 
         $remote = Remote::with([
             'workUnit',
-            // 'remoteType',
-            // 'territory',
-            // 'supervision',
             'homeBase',
-            // 'link'
         ])->where('id', $remote_id)->first();
 
         $homeBase = $remote->homeBase->name ?? '';
@@ -198,7 +192,7 @@ class CustomHelper
                     'expense_report_id' => $expenseReport->id,
                     'amount'            => $ticket->initial_amount ?? 100000,
                     'code'              => $ticket->code . '-' . $expenseReport->code,
-                    'remark'            => "Request Untuk Progress CM - {$technician} - {$ticket->code}",
+                    'remark'            => "Request For CM - {$technician} - {$ticket->code}",
                     'status'            => 'WAITING CONFIRMATION'
                 ]);
 
