@@ -13,6 +13,11 @@ class Permission extends Model
 
     public $table = 'permissions';
 
+    public function applicationModule() 
+    {
+        return $this->hasOne(ApplicationModule::class, 'id', 'application_module_id');
+    }
+
     /**
      * The attributes that are mass assignable.
      *

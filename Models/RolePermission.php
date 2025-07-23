@@ -12,6 +12,11 @@ class RolePermission extends Model
     public $incrementing = false;
     public $table = 'role_permissions';
 
+    public function permission() 
+    {
+        return $this->hasOne(Permission::class, 'id', 'permission_id');
+    }
+
     /**
      * The attributes that are mass assignable.
      *
