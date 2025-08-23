@@ -27,7 +27,7 @@ class NotificationHelper
             'body'                 => $body,
             'expense_report_id'    => $data['expense_report_id'],
             'transaction_id'       => $data['transaction_id'],
-            'approval_activity_id' => $data['approval_activity_id']
+            'approval_activity_id' => $data['approval_activity_id'] ?? null,
         ])->id;
 
         $data['notification_id'] = $notificationId;
@@ -61,7 +61,7 @@ class NotificationHelper
                 'body'                 => $body,
                 'expense_report_id'    => $data['expense_report_id'],
                 'transaction_id'       => $data['transaction_id'],
-                'approval_activity_id' => $data['approval_activity_id'],
+                'approval_activity_id' => $data['approval_activity_id'] ?? null,
                 'is_read'              => 0,
                 'created_at'           => $timestamp,
                 'updated_at'           => $timestamp
@@ -101,7 +101,7 @@ class NotificationHelper
                 "image_url"            => null,
                 "expense_report_id"    => $data_arr['expense_report_id'],
                 "transaction_id"       => $data_arr['transaction_id'],
-                "approval_activity_id" => $data_arr['approval_activity_id'],
+                "approval_activity_id" => $data_arr['approval_activity_id'] ?? null,
                 "notification_id"      => $data_arr['notification_id'],
                 "timestamp"            => now()->toDateTimeString(),
             ],
