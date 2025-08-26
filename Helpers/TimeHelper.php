@@ -43,7 +43,7 @@ class TimeHelper{
         $minutes = floor(($totalDuration % 3600) / 60);
         $seconds = $totalDuration % 60;
 
-        return sprintf("%02d Jam %02d Menit %02d Detik", $hours, $minutes, $seconds);
+        return sprintf("%02d Hours %02d Minutes %02d Seconds", $hours, $minutes, $seconds);
     }
 
     /**
