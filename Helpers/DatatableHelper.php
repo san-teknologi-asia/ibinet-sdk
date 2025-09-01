@@ -261,7 +261,7 @@ class DatatableHelper
 
         $workTime = TimeHelper::getWorkTimeTicket($data->id);
 
-        $workBadge = "<span class='badge bg-info'>{$workTime}</span>";
+        $workBadge = $statusText != 'CANCELED' ? "<br><br> <span class='badge bg-info'>{$workTime}</span>" : ' ';
 
         if ($data->status != 'CANCELED') {
             if ($data->user_id != null) {
@@ -271,6 +271,6 @@ class DatatableHelper
             }
         }
 
-        return $ticketStatus . '<br><br>' . $statusBadge . '<br><br>' . $workBadge;
+        return $ticketStatus . '<br><br>' . $statusBadge . $workBadge;
     }
 }
