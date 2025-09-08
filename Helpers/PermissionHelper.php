@@ -8,7 +8,10 @@ function has($permission)
 {
     try {
         $authRoles = Auth::user()->role_id;
-        $roleHasPermission = Cache::get('permission');
+        $userId = Auth::user()->id;
+        $cacheKey = "permission_user_{$userId}_role_{$authRoles}";
+        
+        $roleHasPermission = Cache::get($cacheKey);
 
         if (!$roleHasPermission) {
             $roleHasPermission = RolePermission::where('role_id', $authRoles)
@@ -16,16 +19,10 @@ function has($permission)
                 ->pluck('permission_id')
                 ->toArray();
 
-            Cache::put('permission', $roleHasPermission, 1440);
+            Cache::put($cacheKey, $roleHasPermission, 1440);
         }
 
-        $roleHasPermission = in_array($permission, $roleHasPermission);
-
-        if ($roleHasPermission) {
-            return true;
-        }
-
-        return false;
+        return in_array($permission, $roleHasPermission);
     } catch (\Exception $e) {
         return false;
     }
