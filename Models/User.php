@@ -35,6 +35,15 @@ class User extends Authenticatable
         'remember_token',
     ];
 
+    public $appends = [
+        'project_ids',
+    ];
+
+    public function getProjectIdsAttribute()
+    {
+        return $this->project->pluck('id')->toArray();
+    }
+
     /**
      * Get the identifier that will be stored in the subject claim of the JWT.
      *
