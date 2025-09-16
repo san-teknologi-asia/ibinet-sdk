@@ -116,4 +116,31 @@ class Project extends Model
     {
         return $this->belongsToMany('Ibinet\Models\Requirement', 'project_requirements');
     }
+
+    /**
+     * Get expense report remotes for this project
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\HasMany
+     */
+    public function expenseReportRemotes()
+    {
+        return $this->hasMany('Ibinet\Models\ExpenseReportRemote', 'project_id');
+    }
+
+    /**
+     * Get remote finances through expense report remotes
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\HasManyThrough
+     */
+    public function remoteFinances()
+    {
+        return $this->hasManyThrough(
+            'Ibinet\Models\RemoteFinance',
+            'Ibinet\Models\ExpenseReportRemote',
+            'project_id', // Foreign key on expense_report_remotes table
+            'expense_report_remote_id', // Foreign key on remote_finances table
+            'id', // Local key on projects table
+            'id' // Local key on expense_report_remotes table
+        );
+    }
 }
