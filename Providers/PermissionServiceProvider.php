@@ -55,5 +55,35 @@ class PermissionServiceProvider extends ServiceProvider
                 return false;
             }
         });
+
+        Blade::if('canany', function ($permissions) {
+            try {
+                if (!Auth::check()) {
+                    return false;
+                }
+
+                $authRoles = Auth::user()->role_id;
+                $roleHasPermission = RolePermission::where('role_id', $authRoles)
+                    ->get()
+                    ->pluck('permission_id')
+                    ->toArray();
+
+                // Ensure permissions is an array
+                if (!is_array($permissions)) {
+                    $permissions = [$permissions];
+                }
+
+                // Check if user has any of the specified permissions
+                foreach ($permissions as $permission) {
+                    if (in_array($permission, $roleHasPermission)) {
+                        return true;
+                    }
+                }
+
+                return false;
+            } catch (\Exception $e) {
+                return false;
+            }
+        });
     }
 }
