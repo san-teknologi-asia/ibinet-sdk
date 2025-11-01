@@ -344,7 +344,7 @@ class ApprovalService{
             }
             
             // Check if handler returned success
-            if (!$result['success']) {
+            if ($result['success'] == false) {
                 DB::rollBack();
                 return $result;
             }
