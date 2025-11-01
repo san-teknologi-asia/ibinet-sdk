@@ -25,11 +25,6 @@ class ApprovalService{
 
     /**
      * Create approval step initialization
-     *
-     * @param string $refId Reference ID of the request
-     * @param string $refType Type of the request (EXPENSE, FUND_REQUEST)
-     * @param array $data Approval data containing role_id, user_id, note
-     * @return array Status and message of the initialization process
      */
     public static function initStep($refId, $refType, $data)
     {
@@ -148,10 +143,6 @@ class ApprovalService{
     
     /**
      * Get initial reference data for approval initialization
-     * 
-     * @param string $refId Reference ID
-     * @param string $refType Reference type
-     * @return array Array containing approval flow, entity data, amount, and location
      */
     private static function getInitialReferenceData($refId, $refType)
     {
@@ -182,11 +173,6 @@ class ApprovalService{
     
     /**
      * Determine which next step to use based on conditions
-     * 
-     * @param Collection $nextSteps Collection of possible next steps
-     * @param string $refType Reference type
-     * @param float $entityAmount Amount for condition checking
-     * @return object|null Selected next step or null if none found
      */
     private static function determineNextStep($nextSteps, $refType, $entityAmount)
     {
@@ -224,9 +210,6 @@ class ApprovalService{
     
     /**
      * Get appropriate step name based on reference type
-     * 
-     * @param string $refType Reference type
-     * @return string Step name
      */
     private static function getInitStepName($refType)
     {
@@ -241,11 +224,6 @@ class ApprovalService{
     
     /**
      * Update entity status based on reference type
-     * 
-     * @param string $refType Reference type
-     * @param string $refId Reference ID
-     * @param string $status Status to set
-     * @return void
      */
     private static function updateEntityStatus($refType, $refId, $status)
     {
@@ -258,11 +236,6 @@ class ApprovalService{
 
     /**
      * Process approval for a request
-     *
-     * @param string $refId Reference ID of the request
-     * @param string $refType Type of the request (EXPENSE, FUND_REQUEST)
-     * @param array $data Approval data containing status, note, etc.
-     * @return array Status and message of the approval process
      */
     public static function processApproval($refId, $refType, $data)
     {
@@ -844,8 +817,6 @@ class ApprovalService{
 
     /**
      * Get current step of approval
-     *
-     * @return object
      */
     public static function fetchCurrentActivity($refId, $refType)
     {
@@ -859,10 +830,6 @@ class ApprovalService{
 
     /**
      * Fetch releated data for revision histories
-     * 
-     * @param $refId Reference ID
-     * @param $refType Reference type
-     * @return object|null
      */
     public static function fetchReleatedData($refId, $refType)
     {
@@ -877,10 +844,6 @@ class ApprovalService{
 
     /**
      * Fetch user by condition
-     *
-     * @param String $roleId
-     * @param String $projectId
-     * @param String $regionId
      */
     private static function fetchUserByCondition($status ,$roleId, $projectId = null, $regionId = null)
     {
@@ -944,9 +907,6 @@ class ApprovalService{
 
     /**
      * Define project and region by location
-     *
-     * @param String $locationType
-     * @param String $locationId
      */
     public static function defineProjectAndRegionByLocation($locationType, $locationId)
     {
@@ -970,8 +930,6 @@ class ApprovalService{
 
     /**
      * Define project and region by fund request
-     *
-     * @return void
      */
     public static function defineProjectAndRegionByFundRequest($expenseReportRequest)
     {
