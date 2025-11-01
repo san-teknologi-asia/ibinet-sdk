@@ -10,6 +10,7 @@ use Ibinet\Models\ExpenseReportRemote;
 use Ibinet\Models\ExpenseReportRequest;
 use Ibinet\Models\ApprovalRevisionHistory;
 use Ibinet\Models\User;
+use DB;
 
 class ApprovalService{
 
@@ -639,115 +640,135 @@ class ApprovalService{
      */
     private static function handleNextStep($refId, $refType, $currentActivity, $data, $entityData, $approvalFlow, $projectId, $regionId, $expenseReportAmount)
     {
-        $currentStep = ApprovalFlowDetail::where('approval_flow_id', $currentActivity->approval_flow_id)
-            ->where('id', $currentActivity->approval_flow_detail_id)
-            ->first();
+        DB::beginTransaction();
+
+        try{
+            $currentStep = ApprovalFlowDetail::where('approval_flow_id', $currentActivity->approval_flow_id)
+                ->where('id', $currentActivity->approval_flow_detail_id)
+                ->first();
+                
+            $nextStepOrder = $currentStep ? $currentStep->order + 1 : 1;
             
-        $nextStepOrder = $currentStep ? $currentStep->order + 1 : 1;
-        
-        // Get next steps based on the order
-        $nextSteps = ApprovalFlowDetail::where('approval_flow_id', $currentActivity->approval_flow_id)
-            ->where('order', $nextStepOrder)
-            ->get();
+            // Get next steps based on the order
+            $nextSteps = ApprovalFlowDetail::where('approval_flow_id', $currentActivity->approval_flow_id)
+                ->where('order', $nextStepOrder)
+                ->get();
+                
+            // Check if we have next steps
+            if ($nextSteps->isEmpty()) {
+                // This is the last step, mark as completed
+                ApprovalActivity::create([
+                    'ref_id' => $refId,
+                    'ref_type' => $refType,
+                    'approval_flow_id' => $approvalFlow,
+                    'approval_flow_detail_id' => null,
+                    'step' => $nextStepOrder,
+                    'step_name' => "Approval Completed",
+                    'status' => 'END',
+                    'role_id' => $currentActivity->role_id,
+                    'user_id' => $currentActivity->user_id,
+                    'note' => "Approval completed with final note: " . $data['note'],
+                    'process_at' => now(),
+                    'order' => $currentActivity->order + 1
+                ]);
+                
+                // Update entity status
+                $entityData->update(['status' => 'APPROVED']);
+                
+                return [
+                    'success' => true,
+                    'message' => 'Approval process completed successfully'
+                ];
+            }
             
-        // Check if we have next steps
-        if ($nextSteps->isEmpty()) {
-            // This is the last step, mark as completed
+            // Determine the next step based on conditions
+            $nextStep = null;
+            
+            if ($nextSteps->count() == 1) {
+                $nextStep = $nextSteps->first();
+            } else {
+                // Evaluate conditions to find the appropriate next step
+                foreach ($nextSteps as $step) {
+                    // Skip steps without conditions
+                    if (empty($step->condition) || empty($step->condition_value)) {
+                        continue;
+                    }
+                    
+                    $condition = $step->condition;
+                    $conditionValue = $step->condition_value;
+                    
+                    // Evaluate the condition
+                    if (eval("return \$expenseReportAmount $condition $conditionValue;")) {
+                        $nextStep = $step;
+                        break;
+                    }
+                }
+                
+                // If no condition matched, take the first step (fallback)
+                if (!$nextStep && $nextSteps->isNotEmpty()) {
+                    $nextStep = $nextSteps->first();
+                }
+            }
+            
+            if (!$nextStep) {
+                DB::rollBack();
+                return [
+                    'success' => false,
+                    'message' => 'Could not determine next approval step'
+                ];
+            }
+            
+            // Find the next assignee
+            $nextAssignmentUser = self::fetchUserByCondition(
+                $nextStep->status,
+                $nextStep->role_id,
+                $projectId,
+                $regionId
+            );
+            
+            if (!$nextAssignmentUser) {
+                DB::rollBack();
+                return [
+                    'success' => false,
+                    'message' => "No user available for the next approval step, Next Step Is: {$nextStep->name}"
+                ];
+            }
+            
+            // Create next approval activity
             ApprovalActivity::create([
                 'ref_id' => $refId,
                 'ref_type' => $refType,
                 'approval_flow_id' => $approvalFlow,
-                'approval_flow_detail_id' => null,
-                'step' => $nextStepOrder,
-                'step_name' => "Approval Completed",
-                'status' => 'END',
-                'role_id' => $currentActivity->role_id,
-                'user_id' => $currentActivity->user_id,
-                'note' => "Approval completed with final note: " . $data['note'],
-                'process_at' => now(),
-                'order' => $currentActivity->order + 1
+                'approval_flow_detail_id' => $nextStep->id,
+                'step' => $nextStep->order,
+                'step_name' => $nextStep->name,
+                'status' => 'PENDING',
+                'role_id' => $nextStep->role_id,
+                'user_id' => $nextAssignmentUser->id,
+                'note' => null,
+                'order' => $currentActivity->order + 1,
+                'process_at' => now()
             ]);
-            
-            // Update entity status
-            $entityData->update(['status' => 'APPROVED']);
             
             return [
                 'success' => true,
-                'message' => 'Approval process completed successfully'
+                'message' => 'Request moved to next approval step'
             ];
-        }
-        
-        // Determine the next step based on conditions
-        $nextStep = null;
-        
-        if ($nextSteps->count() == 1) {
-            $nextStep = $nextSteps->first();
-        } else {
-            // Evaluate conditions to find the appropriate next step
-            foreach ($nextSteps as $step) {
-                // Skip steps without conditions
-                if (empty($step->condition) || empty($step->condition_value)) {
-                    continue;
-                }
-                
-                $condition = $step->condition;
-                $conditionValue = $step->condition_value;
-                
-                // Evaluate the condition
-                if (eval("return \$expenseReportAmount $condition $conditionValue;")) {
-                    $nextStep = $step;
-                    break;
-                }
-            }
-            
-            // If no condition matched, take the first step (fallback)
-            if (!$nextStep && $nextSteps->isNotEmpty()) {
-                $nextStep = $nextSteps->first();
-            }
-        }
-        
-        if (!$nextStep) {
+        } catch (\Exception $e) {
+            DB::rollBack();
+            \Log::error("Error handling next step: {$e->getMessage()} on line {$e->getLine()}");
             return [
                 'success' => false,
-                'message' => 'Could not determine next approval step'
+                'message' => "Error handling next step: {$e->getMessage()}"
             ];
-        }
-        
-        // Find the next assignee
-        $nextAssignmentUser = self::fetchUserByCondition(
-            $nextStep->status,
-            $nextStep->role_id,
-            $projectId,
-            $regionId
-        );
-        
-        if (!$nextAssignmentUser) {
+        } catch (\Throwable $t) {
+            DB::rollBack();
+            \Log::error("Error handling next step: {$t->getMessage()} on line {$t->getLine()}");
             return [
                 'success' => false,
-                'message' => 'No user available for the next approval step'
+                'message' => "Error handling next step: {$t->getMessage()}"
             ];
         }
-        
-        // Create next approval activity
-        ApprovalActivity::create([
-            'ref_id' => $refId,
-            'ref_type' => $refType,
-            'approval_flow_id' => $approvalFlow,
-            'approval_flow_detail_id' => $nextStep->id,
-            'step' => $nextStep->order,
-            'step_name' => $nextStep->name,
-            'status' => 'PENDING',
-            'role_id' => $nextStep->role_id,
-            'user_id' => $nextAssignmentUser->id,
-            'note' => null,
-            'order' => $currentActivity->order + 1,
-            'process_at' => now()
-        ]);
-        
-        return [
-            'success' => true,
-            'message' => 'Request moved to next approval step'
-        ];
     }
 
     /**
