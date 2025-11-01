@@ -35,4 +35,9 @@ class RemoteSerial extends Model
             $model->id = (string) Uuid::uuid4();
         });
     }
+
+    public function serial_type()
+    {
+        return $this->belongsTo('Ibinet\Models\HardwareType', 'serial_type_id');
+    }
 }

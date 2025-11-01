@@ -11,6 +11,7 @@ use Ibinet\Models\ExpenseReportRequest;
 use Ibinet\Models\ApprovalRevisionHistory;
 use Ibinet\Models\User;
 use DB;
+use Ibinet\Models\Project;
 
 class ApprovalService{
 
@@ -49,7 +50,7 @@ class ApprovalService{
                     'message' => 'Location type is not valid'
                 ];
             }
-            
+
             $projectId = $defineLocation['projectId'];
             $regionId = $defineLocation['regionId'];
             
@@ -79,7 +80,6 @@ class ApprovalService{
                     'message' => 'Could not determine next approval step'
                 ];
             }
-            
             // Find the next assignee based on conditions
             $nextAssignmentUser = self::fetchUserByCondition(
                 $nextStep->status,
@@ -171,7 +171,6 @@ class ApprovalService{
         } else if ($refType == self::REF_FUND_REQUEST) {
             $approvalFlow = setting('APPROVAL_FUND_REQUEST');
             $entityData = ExpenseReportRequest::find($refId);
-            
             if ($entityData) {
                 $entityAmount = $entityData->amount;
                 $defineLocation = self::defineProjectAndRegionByFundRequest($entityData);
@@ -842,38 +841,62 @@ class ApprovalService{
      */
     private static function fetchUserByCondition($status ,$roleId, $projectId = null, $regionId = null)
     {
-         // check role status condition
+         // Get all eligible users based on conditions
+         $eligibleUsers = collect();
+         
          if($status == self::NO_ROLE_CONDITION){
-            $nextAssignmentUser = User::where('role_id', $roleId)
+            $eligibleUsers = User::where('role_id', $roleId)
                 ->where('is_active', true)
-                ->first();
+                ->get();
         } else if($status == self::SAME_REGION){
-            $nextAssignmentUser = User::where('role_id', $roleId)
+            $eligibleUsers = User::where('role_id', $roleId)
                 ->whereHas('region', function($query) use ($regionId) {
-                    $query->where('id', $regionId);
+                    $query->where('regions.id', $regionId);
                 })
                 ->where('is_active', true)
-                ->first();
+                ->get();
         } else if($status == self::SAME_PROJECT){
-            $nextAssignmentUser = User::where('role_id', $roleId)
+            $eligibleUsers = User::where('role_id', $roleId)
                 ->whereHas('project', function($query) use ($projectId) {
                     $query->where('projects.id', $projectId);
                 })
                 ->where('is_active', true)
-                ->first();
+                ->get();
         } else if ($status == self::SAME_HOMEBASE){
-            // $nextAssignmentUser = User::where('role_id', $roleId)
+            // $eligibleUsers = User::where('role_id', $roleId)
             //     ->whereHas('homebase', function($query) use ($homebaseId) {
             //         $query->where('homebases.id', $homebaseId);
             //     })
             //     ->where('is_active', true)
-            //     ->first();
-            $nextAssignmentUser = null;
-        } else{
-            $nextAssignmentUser = null;
+            //     ->get();
+            $eligibleUsers = collect();
         }
 
-        return $nextAssignmentUser;
+        if ($eligibleUsers->isEmpty()) {
+            return null;
+        }
+
+        // If only one user, return that user
+        if ($eligibleUsers->count() == 1) {
+            return $eligibleUsers->first();
+        }
+
+        // Load balance: find user with least approval activities
+        $userWorkloads = $eligibleUsers->map(function ($user) {
+            $activeApprovals = ApprovalActivity::where('user_id', $user->id)
+                ->where('status', 'PENDING')
+                ->count();
+            
+            return [
+                'user' => $user,
+                'workload' => $activeApprovals
+            ];
+        });
+
+        // Sort by workload (ascending) and return user with least workload
+        $selectedUser = $userWorkloads->sortBy('workload')->first();
+        
+        return $selectedUser['user'];
     }
 
     /**
@@ -910,10 +933,14 @@ class ApprovalService{
     public static function defineProjectAndRegionByFundRequest($expenseReportRequest)
     {
         $projectId = $expenseReportRequest->project_id;
-
+        $project =  Project::with('regions')->find($projectId);
+        
+        // Get the first region ID from the project's regions collection
+        $regionId = $project->regions->first()?->id;
+        
         return [
             'projectId' => $projectId,
-            'regionId' => null
+            'regionId' => $regionId ?? null
         ];
     }
 }

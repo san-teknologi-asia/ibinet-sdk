@@ -6,7 +6,7 @@ use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\Blade;
 use Ibinet\Models\RolePermission;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Cache;
+// use Illuminate\Support\Facades\Cache;
 
 class PermissionServiceProvider extends ServiceProvider
 {
@@ -26,22 +26,58 @@ class PermissionServiceProvider extends ServiceProvider
         Blade::if('has', function ($permission) {
             try {
                 $authRoles = Auth::user()->role_id;
-                $roleHasPermission = Cache::get('permission');
+                // $roleHasPermission = Cache::get('permission');
 
 
-                if (!$roleHasPermission) {
-                    $roleHasPermission = RolePermission::where('role_id', $authRoles)
-                        ->get()
-                        ->pluck('permission_id')
-                        ->toArray();
+                // if (!$roleHasPermission) {
+                //     $roleHasPermission = RolePermission::where('role_id', $authRoles)
+                //         ->get()
+                //         ->pluck('permission_id')
+                //         ->toArray();
 
-                    Cache::put('permission', $roleHasPermission, 1440);
+                //     Cache::put('permission', $roleHasPermission, 1440);
+                // }
+
+                // $roleHasPermission = in_array($permission, $roleHasPermission);
+
+                // if ($roleHasPermission) {
+                //     return true;
+                // }
+
+                // return false;
+                $roleHasPermission = RolePermission::where('role_id', $authRoles)
+                    ->get()
+                    ->pluck('permission_id')
+                    ->toArray();
+                return in_array($permission, $roleHasPermission);
+                
+            } catch (\Exception $e) {
+                return false;
+            }
+        });
+
+        Blade::if('canany', function ($permissions) {
+            try {
+                if (!Auth::check()) {
+                    return false;
                 }
 
-                $roleHasPermission = in_array($permission, $roleHasPermission);
+                $authRoles = Auth::user()->role_id;
+                $roleHasPermission = RolePermission::where('role_id', $authRoles)
+                    ->get()
+                    ->pluck('permission_id')
+                    ->toArray();
 
-                if ($roleHasPermission) {
-                    return true;
+                // Ensure permissions is an array
+                if (!is_array($permissions)) {
+                    $permissions = [$permissions];
+                }
+
+                // Check if user has any of the specified permissions
+                foreach ($permissions as $permission) {
+                    if (in_array($permission, $roleHasPermission)) {
+                        return true;
+                    }
                 }
 
                 return false;

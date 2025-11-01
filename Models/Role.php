@@ -36,25 +36,42 @@ class Role extends Model
 
     public function childrenRoles()
     {
-        $roles = DB::select("
-            WITH RECURSIVE role_hierarchy AS (
+        try {
+            // Set a reasonable recursion depth limit
+            DB::statement('SET SESSION cte_max_recursion_depth = 100');
+            
+            $roles = DB::select("
+                WITH RECURSIVE role_hierarchy AS (
+                    SELECT id, parent_id, name, 0 as depth
+                    FROM roles
+                    WHERE id = ?
+
+                    UNION ALL
+
+                    SELECT r.id, r.parent_id, r.name, rh.depth + 1
+                    FROM roles r
+                    INNER JOIN role_hierarchy rh ON r.parent_id = rh.id
+                    WHERE rh.depth < 50
+                )
+                SELECT id, parent_id, name FROM role_hierarchy
+                WHERE id != ?;
+            ", [$this->id, $this->id]);
+
+            return array_values($roles);
+        } catch (\Exception $e) {
+            // Log the error and return empty array to prevent application crash
+            \Log::error('Role hierarchy query failed: ' . $e->getMessage(), [
+                'role_id' => $this->id,
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            // Fallback: return direct children only
+            return DB::select("
                 SELECT id, parent_id, name
                 FROM roles
-                WHERE id = ?
-
-                UNION ALL
-
-                SELECT r.id, r.parent_id, r.name
-                FROM roles r
-                INNER JOIN role_hierarchy rh ON r.parent_id = rh.id
-            )
-            SELECT * FROM role_hierarchy;
-        ", [$this->id]);
-
-        $roles = array_filter($roles, function($role) {
-            return $role->id != $this->id;
-        });
-        return array_values($roles);
+                WHERE parent_id = ? AND id != ?
+            ", [$this->id, $this->id]);
+        }
     }
 
     /**

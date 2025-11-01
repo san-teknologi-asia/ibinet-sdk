@@ -89,9 +89,11 @@ class DatatableHelper
         }
 
         // TODO: Not understand where the relation should be
-        // if (($data->remoteHelpdesk->process_date ?? null) != null) {
-        //     $visitDate = date('d F Y', strtotime($data->remoteHelpdesk->process_date));
-        // }
+        if ($data->phase != null) {
+            if (($data->remoteHelpdesk->process_date ?? null) != null) {
+                $visitDate = date('d F Y', strtotime($data->remoteHelpdesk->process_date));
+            }
+        }
 
         if ($data->admin_process_date != null) {
             $taskDate = date('d F Y H:i', strtotime($data->admin_process_date));
@@ -261,7 +263,7 @@ class DatatableHelper
 
         $workTime = TimeHelper::getWorkTimeTicket($data->id);
 
-        $workBadge = "<span class='badge bg-info'>{$workTime}</span>";
+        $workBadge = $statusText != 'CANCELED' ? "<br><br> <span class='badge bg-info'>{$workTime}</span>" : ' ';
 
         if ($data->status != 'CANCELED') {
             if ($data->user_id != null) {
@@ -271,6 +273,6 @@ class DatatableHelper
             }
         }
 
-        return $ticketStatus . '<br><br>' . $statusBadge . '<br><br>' . $workBadge;
+        return $ticketStatus . '<br><br>' . $statusBadge . $workBadge;
     }
 }

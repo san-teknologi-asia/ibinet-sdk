@@ -136,11 +136,11 @@ class CustomHelper
             ],
             (object)[
                 'value' => 'DONE',
-                'text' => 'Selesai'
+                'text' => 'Done'
             ],
             (object)[
                 'value' => 'CANCELED',
-                'text' => 'Dibatalkan'
+                'text' => 'Canceled'
             ],
             (object)[
                 'value' => 'ON STOP CLOCK',

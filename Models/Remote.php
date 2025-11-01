@@ -5,12 +5,14 @@ namespace Ibinet\Models;
 use Ramsey\Uuid\Uuid;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Spatie\Activitylog\Traits\LogsActivity;
+use Spatie\Activitylog\LogOptions;
 use Ibinet\Models\ExpenseReportLocation;
 use Ibinet\Models\RemoteActiveHistory;
 
 class Remote extends Model
 {
-    use SoftDeletes;
+    use SoftDeletes, LogsActivity;
 
     public $incrementing = false;
 
@@ -19,6 +21,26 @@ class Remote extends Model
     protected static $logOnlyDirty = true;
 
     public $keyType = 'string';
+
+    // log activity
+    public function getActivitylogOptions(): LogOptions
+    {
+        $logModule = config('activitylog.default_log_name', self::$logName);
+        
+        return LogOptions::defaults()
+            ->useLogName(self::$logName)
+            ->logAll()
+            ->logOnlyDirty()
+            ->setDescriptionForEvent(function (string $eventName) use ($logModule) {
+                return sprintf(
+                    '[%s] %s %s (id:%s)',
+                    $logModule,
+                    class_basename($this),
+                    $eventName,
+                    $this->getKey() ?? '-'
+                );
+            });
+    }
 
     /**
      * The attributes that are mass assignable.

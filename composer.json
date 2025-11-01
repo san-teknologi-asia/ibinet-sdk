@@ -1,5 +1,5 @@
 {
-    "name": "sandevelopment/ibinet-sdk",
+    "name": "san-teknologi-asia/ibinet-sdk",
     "type": "library",
     "description": "Ibinet SDK For Laravel Application",
     "homepage": "https://ibinet.net/",
@@ -34,6 +34,7 @@
         "spatie/laravel-activitylog": "^4.9.1",
         "league/flysystem-aws-s3-v3": "^3.29",
         "intervention/image": "^3.9",
-        "ixudra/curl": "6.*"
+        "ixudra/curl": "6.*",
+        "maatwebsite/excel": "^3.1"
     }
 }

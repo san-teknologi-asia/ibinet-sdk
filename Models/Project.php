@@ -6,14 +6,40 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Ramsey\Uuid\Uuid;
+use Spatie\Activitylog\Traits\LogsActivity;
+use Spatie\Activitylog\LogOptions;
 
 class Project extends Model
 {
-    use SoftDeletes;
+    use SoftDeletes, LogsActivity;
 
     public $incrementing = false;
 
+    protected static $logName = 'Project';
+    protected static $logAttributes = ['*'];
+    protected static $logOnlyDirty = true;
+
     public $keyType = 'string';
+    
+    // log activity
+    public function getActivitylogOptions(): LogOptions
+    {
+        $logModule = config('activitylog.default_log_name', self::$logName);
+        
+        return LogOptions::defaults()
+            ->useLogName(self::$logName)
+            ->logAll()
+            ->logOnlyDirty()
+            ->setDescriptionForEvent(function (string $eventName) use ($logModule) {
+                return sprintf(
+                    '[%s] %s %s (id:%s)',
+                    $logModule,
+                    class_basename($this),
+                    $eventName,
+                    $this->getKey() ?? '-'
+                );
+            });
+    }
 
     /**
      * The attributes that are mass assignable.
@@ -89,5 +115,32 @@ class Project extends Model
     public function requirements()
     {
         return $this->belongsToMany('Ibinet\Models\Requirement', 'project_requirements');
+    }
+
+    /**
+     * Get expense report remotes for this project
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\HasMany
+     */
+    public function expenseReportRemotes()
+    {
+        return $this->hasMany('Ibinet\Models\ExpenseReportRemote', 'project_id');
+    }
+
+    /**
+     * Get remote finances through expense report remotes
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\HasManyThrough
+     */
+    public function remoteFinances()
+    {
+        return $this->hasManyThrough(
+            'Ibinet\Models\RemoteFinance',
+            'Ibinet\Models\ExpenseReportRemote',
+            'project_id', // Foreign key on expense_report_remotes table
+            'expense_report_remote_id', // Foreign key on remote_finances table
+            'id', // Local key on projects table
+            'id' // Local key on expense_report_remotes table
+        );
     }
 }
