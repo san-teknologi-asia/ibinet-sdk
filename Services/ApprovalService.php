@@ -266,11 +266,14 @@ class ApprovalService{
      */
     public static function processApproval($refId, $refType, $data)
     {
+        DB::beginTransaction();
+        
         try {
             $approvalStatus = $data['status'];
             $currentActivity = self::fetchCurrentActivity($refId, $refType);
             
             if ($currentActivity == null) {
+                DB::rollBack();
                 return [
                     'success' => false,
                     'message' => 'Approval step not found'
@@ -285,6 +288,7 @@ class ApprovalService{
                         ->count();
                         
                     if ($revisionCount > 0) {
+                        DB::rollBack();
                         return [
                             'success' => false,
                             'message' => 'This request has already been revised'
@@ -310,6 +314,7 @@ class ApprovalService{
             list($approvalFlow, $entityData, $expenseReportAmount, $defineLocation) = self::getReferenceData($refId, $refType);
             
             if ($defineLocation == null) {
+                DB::rollBack();
                 return [
                     'success' => false,
                     'message' => 'Location type is not valid'
@@ -318,7 +323,7 @@ class ApprovalService{
             
             $projectId = $defineLocation['projectId'];
             $regionId = $defineLocation['regionId'];
-            
+
             // Update current activity status
             ApprovalActivity::find($currentActivity->id)->update([
                 'processed_at' => now(),
@@ -328,19 +333,39 @@ class ApprovalService{
             ]);
             
             // Handle based on approval status
+            $result = null;
             if ($approvalStatus == 'REJECTED') {
-                return self::handleRejection($refId, $refType, $currentActivity, $data, $entityData, $approvalFlow);
+                $result = self::handleRejection($refId, $refType, $currentActivity, $data, $entityData, $approvalFlow);
             } else if ($approvalStatus == 'REVISION') {
-                return self::handleRevision($refId, $refType, $currentActivity, $data, $approvalFlow, $projectId, $regionId);
+                $result = self::handleRevision($refId, $refType, $currentActivity, $data, $approvalFlow, $projectId, $regionId);
             } else {
                 // For APPROVED or other statuses
-                return self::handleNextStep($refId, $refType, $currentActivity, $data, $entityData, $approvalFlow, $projectId, $regionId, $expenseReportAmount);
+                $result = self::handleNextStep($refId, $refType, $currentActivity, $data, $entityData, $approvalFlow, $projectId, $regionId, $expenseReportAmount);
             }
+            
+            // Check if handler returned success
+            if (!$result['success']) {
+                DB::rollBack();
+                return $result;
+            }
+            
+            // Commit transaction if everything succeeded
+            DB::commit();
+            return $result;
+            
         } catch (\Exception $e) {
+            DB::rollBack();
             \Log::error("Approval process error: {$e->getMessage()} on line {$e->getLine()}");
             return [
                 'success' => false,
                 'message' => "Error processing approval: {$e->getMessage()}"
+            ];
+        } catch (\Throwable $t) {
+            DB::rollBack();
+            \Log::error("Approval process error: {$t->getMessage()} on line {$t->getLine()}");
+            return [
+                'success' => false,
+                'message' => "Error processing approval: {$t->getMessage()}"
             ];
         }
     }
@@ -358,29 +383,45 @@ class ApprovalService{
      */
     private static function handleRejection($refId, $refType, $currentActivity, $data, $entityData, $approvalFlow)
     {
-        // Update entity status
-        $entityData->update(['status' => 'REJECTED']);
-        
-        // Create end activity
-        ApprovalActivity::create([
-            'ref_id' => $refId,
-            'ref_type' => $refType,
-            'approval_flow_id' => $approvalFlow,
-            'approval_flow_detail_id' => null,
-            'step' => $currentActivity->step + 1,
-            'step_name' => "Approval Finished With Rejected By " . $currentActivity->user->name,
-            'status' => 'END',
-            'role_id' => $currentActivity->role_id,
-            'user_id' => $currentActivity->user_id,
-            'note' => $data['note'],
-            'order' => $currentActivity->order + 1,
-            'process_at' => now()
-        ]);
-        
-        return [
-            'success' => true,
-            'message' => 'Request has been rejected'
-        ];
+        try {
+            // Validate current activity user exists
+            if (!$currentActivity->user) {
+                return [
+                    'success' => false,
+                    'message' => 'Current activity user not found'
+                ];
+            }
+            
+            // Update entity status
+            $entityData->update(['status' => 'REJECTED']);
+            
+            // Create end activity
+            ApprovalActivity::create([
+                'ref_id' => $refId,
+                'ref_type' => $refType,
+                'approval_flow_id' => $approvalFlow,
+                'approval_flow_detail_id' => null,
+                'step' => $currentActivity->step + 1,
+                'step_name' => "Approval Finished With Rejected By " . $currentActivity->user->name,
+                'status' => 'END',
+                'role_id' => $currentActivity->role_id,
+                'user_id' => $currentActivity->user_id,
+                'note' => $data['note'],
+                'order' => $currentActivity->order + 1,
+                'process_at' => now()
+            ]);
+            
+            return [
+                'success' => true,
+                'message' => 'Request has been rejected'
+            ];
+        } catch (\Exception $e) {
+            \Log::error("Handle rejection error: {$e->getMessage()} on line {$e->getLine()}");
+            return [
+                'success' => false,
+                'message' => "Error handling rejection: {$e->getMessage()}"
+            ];
+        }
     }
 
     /**
@@ -397,106 +438,114 @@ class ApprovalService{
      */
     private static function handleRevision($refId, $refType, $currentActivity, $data, $approvalFlow, $projectId, $regionId)
     {
-        // Find the previous step
-        $currentStep = ApprovalFlowDetail::where('approval_flow_id', $currentActivity->approval_flow_id)
-            ->where('id', $currentActivity->approval_flow_detail_id)
-            ->first();
-            
-        if (!$currentStep || $currentActivity->step <= 1) {
-            // If first step or step not found, return to initiator
-            $firstActivity = ApprovalActivity::where('ref_id', $refId)
-                ->where('ref_type', $refType)
-                ->where('step', 0)
+        try {
+            // Find the previous step
+            $currentStep = ApprovalFlowDetail::where('approval_flow_id', $currentActivity->approval_flow_id)
+                ->where('id', $currentActivity->approval_flow_detail_id)
                 ->first();
                 
-            if (!$firstActivity) {
-                return [
-                    'success' => false,
-                    'message' => 'Cannot find initiator for revision'
-                ];
-            }
-            
-            ApprovalActivity::create([
-                'ref_id' => $refId,
-                'ref_type' => $refType,
-                'approval_flow_id' => $approvalFlow,
-                'approval_flow_detail_id' => null,
-                'step' => 0,
-                'step_name' => "Revision Requested",
-                'status' => 'REVISION',
-                'role_id' => $firstActivity->role_id,
-                'user_id' => $firstActivity->user_id,
-                'note' => "Revision requested: " . $data['note'],
-                'process_at' => now(),
-                'order' => $currentActivity->order + 1
-            ]);
-        } else {
-            // Find previous step using our new function
-            $previousStepResult = self::findPreviousConditionalStep($refId, $refType, $currentActivity, $currentStep);
-            
-            if (!$previousStepResult['success']) {
-                return [
-                    'success' => false,
-                    'message' => $previousStepResult['message']
-                ];
-            }
-            
-            $previousStep = $previousStepResult['step'];
-            
-            // Find previous approver
-            $previousActivity = ApprovalActivity::where('ref_id', $refId)
-                ->where('ref_type', $refType)
-                ->where('approval_flow_detail_id', $previousStep->id)
-                ->orderBy('created_at', 'desc')
-                ->first();
-                
-            if (!$previousActivity) {
-                // If previous activity not found, find a user based on role conditions
-                $previousUser = self::fetchUserByCondition(
-                    $previousStep->status,
-                    $previousStep->role_id,
-                    $projectId,
-                    $regionId
-                );
-                
-                if (!$previousUser) {
+            if (!$currentStep || $currentActivity->step <= 1) {
+                // If first step or step not found, return to initiator
+                $firstActivity = ApprovalActivity::where('ref_id', $refId)
+                    ->where('ref_type', $refType)
+                    ->where('step', 0)
+                    ->first();
+                    
+                if (!$firstActivity) {
                     return [
                         'success' => false,
-                        'message' => 'Previous approver not found'
+                        'message' => 'Cannot find initiator for revision'
                     ];
                 }
                 
-                $previousUserId = $previousUser->id;
-                $previousRoleId = $previousStep->role_id;
+                ApprovalActivity::create([
+                    'ref_id' => $refId,
+                    'ref_type' => $refType,
+                    'approval_flow_id' => $approvalFlow,
+                    'approval_flow_detail_id' => null,
+                    'step' => 0,
+                    'step_name' => "Revision Requested",
+                    'status' => 'REVISION',
+                    'role_id' => $firstActivity->role_id,
+                    'user_id' => $firstActivity->user_id,
+                    'note' => "Revision requested: " . $data['note'],
+                    'process_at' => now(),
+                    'order' => $currentActivity->order + 1
+                ]);
             } else {
-                $previousUserId = $previousActivity->user_id;
-                $previousRoleId = $previousActivity->role_id;
+                // Find previous step using our new function
+                $previousStepResult = self::findPreviousConditionalStep($refId, $refType, $currentActivity, $currentStep);
+                
+                if (!$previousStepResult['success']) {
+                    return [
+                        'success' => false,
+                        'message' => $previousStepResult['message']
+                    ];
+                }
+                
+                $previousStep = $previousStepResult['step'];
+                
+                // Find previous approver
+                $previousActivity = ApprovalActivity::where('ref_id', $refId)
+                    ->where('ref_type', $refType)
+                    ->where('approval_flow_detail_id', $previousStep->id)
+                    ->orderBy('created_at', 'desc')
+                    ->first();
+                    
+                if (!$previousActivity) {
+                    // If previous activity not found, find a user based on role conditions
+                    $previousUser = self::fetchUserByCondition(
+                        $previousStep->status,
+                        $previousStep->role_id,
+                        $projectId,
+                        $regionId
+                    );
+                    
+                    if (!$previousUser) {
+                        return [
+                            'success' => false,
+                            'message' => 'Previous approver not found'
+                        ];
+                    }
+                    
+                    $previousUserId = $previousUser->id;
+                    $previousRoleId = $previousStep->role_id;
+                } else {
+                    $previousUserId = $previousActivity->user_id;
+                    $previousRoleId = $previousActivity->role_id;
+                }
+                
+                // Create new approval activity for the previous step
+                ApprovalActivity::create([
+                    'ref_id' => $refId,
+                    'ref_type' => $refType,
+                    'approval_flow_id' => $approvalFlow,
+                    'approval_flow_detail_id' => $previousStep->id,
+                    'step' => $previousStep->order,
+                    'step_name' => $previousStep->name,
+                    'status' => 'REVISION',
+                    'role_id' => $previousRoleId,
+                    'user_id' => $previousUserId,
+                    'note' => "Revision requested: " . $data['note'],
+                    'order' => $currentActivity->order + 1,
+                    'process_at' => now()
+                ]);
             }
             
-            // Create new approval activity for the previous step
-            ApprovalActivity::create([
-                'ref_id' => $refId,
-                'ref_type' => $refType,
-                'approval_flow_id' => $approvalFlow,
-                'approval_flow_detail_id' => $previousStep->id,
-                'step' => $previousStep->order,
-                'step_name' => $previousStep->name,
-                'status' => 'REVISION',
-                'role_id' => $previousRoleId,
-                'user_id' => $previousUserId,
-                'note' => "Revision requested: " . $data['note'],
-                'order' => $currentActivity->order + 1,
-                'process_at' => now()
-            ]);
+            // Update entity status
+            // TODO: Consider condition by revision status
+            
+            return [
+                'success' => true,
+                'message' => 'Request has been sent for revision'
+            ];
+        } catch (\Exception $e) {
+            \Log::error("Handle revision error: {$e->getMessage()} on line {$e->getLine()}");
+            return [
+                'success' => false,
+                'message' => "Error handling revision: {$e->getMessage()}"
+            ];
         }
-        
-        // Update entity status
-        // TODO: Consider condition by revision status
-        
-        return [
-            'success' => true,
-            'message' => 'Request has been sent for revision'
-        ];
     }
 
     /**
@@ -639,9 +688,7 @@ class ApprovalService{
      */
     private static function handleNextStep($refId, $refType, $currentActivity, $data, $entityData, $approvalFlow, $projectId, $regionId, $expenseReportAmount)
     {
-        DB::beginTransaction();
-
-        try{
+        try {
             $currentStep = ApprovalFlowDetail::where('approval_flow_id', $currentActivity->approval_flow_id)
                 ->where('id', $currentActivity->approval_flow_detail_id)
                 ->first();
@@ -710,7 +757,6 @@ class ApprovalService{
             }
             
             if (!$nextStep) {
-                DB::rollBack();
                 return [
                     'success' => false,
                     'message' => 'Could not determine next approval step'
@@ -726,7 +772,6 @@ class ApprovalService{
             );
             
             if (!$nextAssignmentUser) {
-                DB::rollBack();
                 return [
                     'success' => false,
                     'message' => "No user available for the next approval step, Next Step Is: {$nextStep->name}"
@@ -754,14 +799,12 @@ class ApprovalService{
                 'message' => 'Request moved to next approval step'
             ];
         } catch (\Exception $e) {
-            DB::rollBack();
             \Log::error("Error handling next step: {$e->getMessage()} on line {$e->getLine()}");
             return [
                 'success' => false,
                 'message' => "Error handling next step: {$e->getMessage()}"
             ];
         } catch (\Throwable $t) {
-            DB::rollBack();
             \Log::error("Error handling next step: {$t->getMessage()} on line {$t->getLine()}");
             return [
                 'success' => false,
