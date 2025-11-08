@@ -374,22 +374,13 @@ class TechnicianBorrowService
                 'status' => 'PENDING_LENDER_APPROVAL'
             ]);
 
-            // Create approval records for contract change
+            // Create approval records for contract change - only lender approval needed
             TechnicianBorrowApproval::create([
                 'technician_borrow_id' => $borrow_id,
                 'contract_change_id' => $contractChange->id,
                 'approval_type' => 'CONTRACT_CHANGE',
                 'approver_role' => 'LENDER',
                 'approver_id' => $borrow->lender_pm_id,
-                'status' => 'PENDING'
-            ]);
-
-            TechnicianBorrowApproval::create([
-                'technician_borrow_id' => $borrow_id,
-                'contract_change_id' => $contractChange->id,
-                'approval_type' => 'CONTRACT_CHANGE',
-                'approver_role' => 'BORROWER',
-                'approver_id' => $borrow->borrower_pm_id,
                 'status' => 'PENDING'
             ]);
 
@@ -464,15 +455,8 @@ class TechnicianBorrowService
                 return ['success' => true, 'message' => 'Contract change rejected'];
             }
 
-            // Check if both approved
-            $allApprovals = TechnicianBorrowApproval::where('contract_change_id', $change_id)
-                ->get();
-            
-            $allApproved = $allApprovals->every(function ($item) {
-                return $item->status == 'APPROVED';
-            });
-
-            if ($allApproved) {
+            // Handle approval - only lender approval needed
+            if ($action == 'APPROVED') {
                 // Apply changes
                 $result = self::applyContractChanges($contractChange);
                 
@@ -489,19 +473,6 @@ class TechnicianBorrowService
                 return [
                     'success' => true,
                     'message' => 'Contract change approved and applied'
-                ];
-            } else {
-                // Update status for next approval
-                if ($approval->approver_role == 'LENDER') {
-                    $contractChange->update(['status' => 'PENDING_BORROWER_APPROVAL']);
-                }
-                
-                DB::commit();
-                // TODO: Send notification to next approver
-                
-                return [
-                    'success' => true,
-                    'message' => 'Approval recorded. Waiting for other party approval.'
                 ];
             }
             
@@ -821,6 +792,90 @@ class TechnicianBorrowService
             return [
                 'success' => false,
                 'message' => "Error starting borrowing: {$e->getMessage()}"
+            ];
+        }
+    }
+
+    /**
+     * Mark a remote as completed
+     *
+     * @param string $remote_id
+     * @return array
+     */
+    public static function completeRemote($remote_id)
+    {
+        DB::beginTransaction();
+        
+        try {
+            $remote = TechnicianBorrowRemote::find($remote_id);
+            
+            if (!$remote) {
+                DB::rollBack();
+                return ['success' => false, 'message' => 'Remote not found'];
+            }
+
+            if (!in_array($remote->status, ['PENDING', 'IN_PROGRESS'])) {
+                DB::rollBack();
+                return ['success' => false, 'message' => 'Remote is already completed or cancelled'];
+            }
+
+            $remote->update(['status' => 'COMPLETED']);
+
+            DB::commit();
+
+            return [
+                'success' => true,
+                'message' => 'Remote marked as completed'
+            ];
+            
+        } catch (\Exception $e) {
+            DB::rollBack();
+            \Log::error("Complete remote error: {$e->getMessage()} on line {$e->getLine()}");
+            return [
+                'success' => false,
+                'message' => "Error completing remote: {$e->getMessage()}"
+            ];
+        }
+    }
+
+    /**
+     * Mark a remote as cancelled
+     *
+     * @param string $remote_id
+     * @return array
+     */
+    public static function cancelRemote($remote_id)
+    {
+        DB::beginTransaction();
+        
+        try {
+            $remote = TechnicianBorrowRemote::find($remote_id);
+            
+            if (!$remote) {
+                DB::rollBack();
+                return ['success' => false, 'message' => 'Remote not found'];
+            }
+
+            if (!in_array($remote->status, ['PENDING', 'IN_PROGRESS'])) {
+                DB::rollBack();
+                return ['success' => false, 'message' => 'Remote is already completed or cancelled'];
+            }
+
+            $remote->update(['status' => 'CANCELLED']);
+
+            DB::commit();
+
+            return [
+                'success' => true,
+                'message' => 'Remote marked as cancelled'
+            ];
+            
+        } catch (\Exception $e) {
+            DB::rollBack();
+            \Log::error("Cancel remote error: {$e->getMessage()} on line {$e->getLine()}");
+            return [
+                'success' => false,
+                'message' => "Error cancelling remote: {$e->getMessage()}"
             ];
         }
     }
