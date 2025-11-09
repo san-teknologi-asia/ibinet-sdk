@@ -412,36 +412,100 @@ class ApprovalService{
     private static function handleRevision($refId, $refType, $currentActivity, $data, $approvalFlow, $projectId, $regionId)
     {
         try {
-            // Always return to the first step (initiator) when revision is requested
-            $firstActivity = ApprovalActivity::where('ref_id', $refId)
-                ->where('ref_type', $refType)
-                ->where('step', 0)
+            // Find the previous step
+            $currentStep = ApprovalFlowDetail::where('approval_flow_id', $currentActivity->approval_flow_id)
+                ->where('id', $currentActivity->approval_flow_detail_id)
                 ->first();
                 
-            if (!$firstActivity) {
-                return [
-                    'success' => false,
-                    'message' => 'Cannot find initiator for revision'
-                ];
+            if (!$currentStep || $currentActivity->step <= 1) {
+                // If first step or step not found, return to initiator
+                $firstActivity = ApprovalActivity::where('ref_id', $refId)
+                    ->where('ref_type', $refType)
+                    ->where('step', 0)
+                    ->first();
+                    
+                if (!$firstActivity) {
+                    return [
+                        'success' => false,
+                        'message' => 'Cannot find initiator for revision'
+                    ];
+                }
+                
+                ApprovalActivity::create([
+                    'ref_id' => $refId,
+                    'ref_type' => $refType,
+                    'approval_flow_id' => $approvalFlow,
+                    'approval_flow_detail_id' => null,
+                    'step' => 0,
+                    'step_name' => "Revision Requested",
+                    'status' => 'REVISION',
+                    'role_id' => $firstActivity->role_id,
+                    'user_id' => $firstActivity->user_id,
+                    'note' => "Revision requested: " . $data['note'],
+                    'process_at' => now(),
+                    'order' => $currentActivity->order + 1
+                ]);
+            } else {
+                // Find previous step using our new function
+                $previousStepResult = self::findPreviousConditionalStep($refId, $refType, $currentActivity, $currentStep);
+                
+                if (!$previousStepResult['success']) {
+                    return [
+                        'success' => false,
+                        'message' => $previousStepResult['message']
+                    ];
+                }
+                
+                $previousStep = $previousStepResult['step'];
+                
+                // Find previous approver
+                $previousActivity = ApprovalActivity::where('ref_id', $refId)
+                    ->where('ref_type', $refType)
+                    ->where('approval_flow_detail_id', $previousStep->id)
+                    ->orderBy('created_at', 'desc')
+                    ->first();
+                    
+                if (!$previousActivity) {
+                    // If previous activity not found, find a user based on role conditions
+                    $previousUser = self::fetchUserByCondition(
+                        $previousStep->status,
+                        $previousStep->role_id,
+                        $projectId,
+                        $regionId
+                    );
+                    
+                    if (!$previousUser) {
+                        return [
+                            'success' => false,
+                            'message' => 'Previous approver not found'
+                        ];
+                    }
+                    
+                    $previousUserId = $previousUser->id;
+                    $previousRoleId = $previousStep->role_id;
+                } else {
+                    $previousUserId = $previousActivity->user_id;
+                    $previousRoleId = $previousActivity->role_id;
+                }
+                
+                // Create new approval activity for the previous step
+                ApprovalActivity::create([
+                    'ref_id' => $refId,
+                    'ref_type' => $refType,
+                    'approval_flow_id' => $approvalFlow,
+                    'approval_flow_detail_id' => $previousStep->id,
+                    'step' => $previousStep->order,
+                    'step_name' => $previousStep->name,
+                    'status' => 'REVISION',
+                    'role_id' => $previousRoleId,
+                    'user_id' => $previousUserId,
+                    'note' => "Revision requested: " . $data['note'],
+                    'order' => $currentActivity->order + 1,
+                    'process_at' => now()
+                ]);
             }
             
-            // Create new approval activity returning to step 0 (initiator)
-            ApprovalActivity::create([
-                'ref_id' => $refId,
-                'ref_type' => $refType,
-                'approval_flow_id' => $approvalFlow,
-                'approval_flow_detail_id' => null,
-                'step' => 0,
-                'step_name' => "Revision Requested",
-                'status' => 'REVISION',
-                'role_id' => $firstActivity->role_id,
-                'user_id' => $firstActivity->user_id,
-                'note' => "Revision requested: " . $data['note'],
-                'process_at' => now(),
-                'order' => $currentActivity->order + 1
-            ]);
-            
-            // Update entity status to indicate revision
+            // Update entity status
             // TODO: Consider condition by revision status
             
             return [
