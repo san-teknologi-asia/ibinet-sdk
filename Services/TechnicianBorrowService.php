@@ -668,7 +668,7 @@ class TechnicianBorrowService
             // Close expense report
             if ($borrow->expense_report_id) {
                 ExpenseReport::find($borrow->expense_report_id)
-                    ->update(['status' => 'CLOSED']);
+                    ->update(['status' => 'DONE']);
             }
 
             // Remove technician from borrower's project
@@ -765,6 +765,7 @@ class TechnicianBorrowService
         
         try {
             $borrow = TechnicianBorrow::find($borrow_id);
+            dd($borrow);
             
             if (!$borrow) {
                 DB::rollBack();
