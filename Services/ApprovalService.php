@@ -826,7 +826,7 @@ class ApprovalService{
         // Load balance: find user with least approval activities
         $userWorkloads = $eligibleUsers->map(function ($user) {
             $activeApprovals = ApprovalActivity::where('user_id', $user->id)
-                ->where('status', 'PENDING')
+                // ->where('status', 'PENDING')
                 ->count();
             
             return [
