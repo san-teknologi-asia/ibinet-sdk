@@ -66,6 +66,7 @@ class TicketHelper
                 'date' => now(),
                 'is_process_helpdesk' => false,
                 'is_process_admin' => false,
+                'helpdesk_status' => 'PENDING'
             ]);
 
             $checkTimer = TicketTimer::where('ticket_id', $ticket_id)
