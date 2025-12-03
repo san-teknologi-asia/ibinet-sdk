@@ -18,12 +18,14 @@ class TicketHelper
      */
     public static function assignToExpenseReport($request, $ticket_id)
     {
-        $activeExpenseReport = ExpenseReport::where([
-                'assignment_to' => $request->user_id,
-                'status' => 'ONGOING'
-            ])->first();
-
-        $user = User::find($request->user_id);
+        if($request->user_id){
+            $activeExpenseReport = ExpenseReport::where([
+                    'assignment_to' => $request->user_id,
+                    'status' => 'ONGOING'
+                ])->first();
+    
+            $user = User::find($request->user_id);
+        }
 
         $workType = WorkType::where('code', 'CM')->first();
         $ticket = Ticket::find($ticket_id);
@@ -80,6 +82,41 @@ class TicketHelper
                     'start_time' => now()
                 ]);
             }
+        }else{
+            $expenseName = "First handling not assigned to any technician";
+            $expenseReport = ExpenseReport::create([
+                    'code' => ExpenseReportHelper::generateERCode(),
+                    'name' => $expenseName,
+                    'amount' => $ticket->initial_amount ?? 100000,
+                    'assignment_to' => "-",
+                    'remark' => $expenseName,
+                    'created_by' => auth()->user()->id ?? auth('api')->user()->id,
+                    'is_tech' => false
+                ]);
+
+                ExpenseReportRequest::create([
+                    'expense_report_id' => $expenseReport->id,
+                    'amount' => $ticket->initial_amount ?? 100000,
+                    'code' => $ticket->code,
+                    'remark' => "Request For CM - {$technician} - {$ticket->code}",
+                    'status' => 'WAITING CONFIRMATION'
+                ]);
+
+                $activeExpenseReport = $expenseReport;
+
+                ExpenseReportRemote::create([
+                'expense_report_id' => $activeExpenseReport->id,
+                'remote_id' => $remote_id,
+                'project_id' => $ticket->project_id,
+                'ticket_id' => $ticket_id,
+                'phase' => $ticket->phase,
+                'work_type_id' => $workType->id,
+                'schedule_id' => null,
+                'date' => now(),
+                'is_process_helpdesk' => false,
+                'is_process_admin' => false,
+                'helpdesk_status' => 'PENDING'
+            ]);
         }
     }
 }
