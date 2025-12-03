@@ -148,7 +148,7 @@ class DatatableHelper
         $action = "";
         $doneStatusConditional = ConditionalHelper::checkHelpdeskDoneStatus($data->helpdesk_status);
         $isHelpdesk = has('omc.dashboard.process_helpdesk') && $data->helpdesk_status != 'DONE' && $data->helpdesk_status != 'CLOSED';
-        $isAdmin = has('omc.dashboard.process_admin') && $doneStatusConditional;
+        $isAdmin = has('omc.dashboard.process_admin') && $doneStatusConditional && $data->admin_status != 'DONE' && $data->admin_status != 'CLOSED';
         // $isHelpdeskSupervisor = ConditionalHelper::checkHelpdeskSupervisorRole(auth()->user()->role_id);
         // $isAdminSupervisor = ConditionalHelper::checkAdminSupervisorRole(auth()->user()->role_id) && $doneStatusConditional;
         // $isSuperAdmin = ConditionalHelper::checkSuperAdminRole(auth()->user()->role_id);
