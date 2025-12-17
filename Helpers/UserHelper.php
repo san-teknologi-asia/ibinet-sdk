@@ -32,3 +32,38 @@ function getUserProjectArray($auth)
 
     return $projects;
 }
+
+/**
+ * Get user projects by roles efficiently
+ *
+ * @param string $userId
+ * @param array|string $modules
+ * @return array
+ */
+function getUserProjectByRoles($userId, $modules)
+{
+    $modules = is_array($modules) ? $modules : [$modules];
+
+    $query = \Ibinet\Models\UserProject::where('user_id', $userId)
+        ->where(function ($q) use ($modules) {
+            if (in_array('OMC', $modules)) {
+                $q->orWhere('project_id_helpdesk', '!=', null);
+            }
+            if (in_array('IFAS', $modules)) {
+                $q->orWhere('project_id_finance', '!=', null);
+            }
+            if (in_array('IBOS', $modules)) {
+                $q->orWhere('project_id', '!=', null);
+            }
+        });
+    if (in_array('OMC', $modules)) {
+       $userProjects = $query->pluck('project_id_helpdesk')->toArray();
+    }elseif (in_array('IFAS', $modules)) {
+       $userProjects = $query->pluck('project_id_finance')->toArray();
+    }elseif (in_array('IBOS', $modules)) {
+       $userProjects = $query->pluck('project_id')->toArray();
+    }else{
+        $userProjects = [];
+    }
+    return ['projects' => $userProjects];
+}

@@ -99,6 +99,12 @@ class User extends Authenticatable
         return $this->belongsToMany('Ibinet\Models\Project', 'user_projects');
     }
 
+
+    public function userProject()
+    {
+        return $this->hasMany('Ibinet\Models\UserProject');
+    }
+
     /**
      *  Setup model event hooks
      */
