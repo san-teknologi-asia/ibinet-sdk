@@ -18,12 +18,12 @@ class TicketHelper
      */
     public static function assignToExpenseReport($request, $ticket_id)
     {
-        if($request->user_id){
+        if ($request->user_id) {
             $activeExpenseReport = ExpenseReport::where([
-                    'assignment_to' => $request->user_id,
-                    'status' => 'ONGOING'
-                ])->first();
-    
+                'assignment_to' => $request->user_id,
+                'status' => 'ONGOING'
+            ])->first();
+
             $user = User::find($request->user_id);
         }
 
@@ -36,7 +36,7 @@ class TicketHelper
         if ($technician != null) {
             $expenseName = "Progress CM - {$technician}";
 
-            if(!$activeExpenseReport){
+            if (!$activeExpenseReport) {
                 $expenseReport = ExpenseReport::create([
                     'code' => ExpenseReportHelper::generateERCode(),
                     'name' => $expenseName,
@@ -55,7 +55,7 @@ class TicketHelper
                 ]);
 
                 $activeExpenseReport = $expenseReport;
-            } 
+            }
 
             ExpenseReportRemote::create([
                 'expense_report_id' => $activeExpenseReport->id,
@@ -75,36 +75,36 @@ class TicketHelper
                 ->whereNull('end_time')
                 ->first();
 
-            if(!$checkTimer){
+            if (!$checkTimer) {
                 TicketTimer::create([
                     'ticket_id' => $ticket_id,
                     'start_user_id' => $request->user_id,
                     'start_time' => now()
                 ]);
             }
-        }else{
+        } else {
             $expenseName = "First handling not assigned to any technician";
             $expenseReport = ExpenseReport::create([
-                    'code' => ExpenseReportHelper::generateERCode(),
-                    'name' => $expenseName,
-                    'amount' => $ticket->initial_amount ?? 100000,
-                    'assignment_to' => "-",
-                    'remark' => $expenseName,
-                    'created_by' => auth()->user()->id ?? auth('api')->user()->id,
-                    'is_tech' => false
-                ]);
+                'code' => ExpenseReportHelper::generateERCode(),
+                'name' => $expenseName,
+                'amount' => $ticket->initial_amount ?? 100000,
+                'assignment_to' => "-",
+                'remark' => $expenseName,
+                'created_by' => auth()->user()->id ?? auth('api')->user()->id,
+                'is_tech' => false
+            ]);
 
-                ExpenseReportRequest::create([
-                    'expense_report_id' => $expenseReport->id,
-                    'amount' => $ticket->initial_amount ?? 100000,
-                    'code' => $ticket->code,
-                    'remark' => "Request For CM - {$technician} - {$ticket->code}",
-                    'status' => 'WAITING CONFIRMATION'
-                ]);
+            ExpenseReportRequest::create([
+                'expense_report_id' => $expenseReport->id,
+                'amount' => $ticket->initial_amount ?? 100000,
+                'code' => $ticket->code,
+                'remark' => "Request For CM - {$technician} - {$ticket->code}",
+                'status' => 'WAITING CONFIRMATION'
+            ]);
 
-                $activeExpenseReport = $expenseReport;
+            $activeExpenseReport = $expenseReport;
 
-                ExpenseReportRemote::create([
+            ExpenseReportRemote::create([
                 'expense_report_id' => $activeExpenseReport->id,
                 'remote_id' => $remote_id,
                 'project_id' => $ticket->project_id,
@@ -118,5 +118,37 @@ class TicketHelper
                 'helpdesk_status' => 'PENDING'
             ]);
         }
+    }
+
+    /**
+     * Create log ticket
+     */
+    public static function createLogTicket($request, $description)
+    {
+        $logName = $request->log_name ?? 'Ticket';
+        $description = $description ?? 'Ticket Activity';
+        $properties = $request->properties ?? [];
+
+        $activity = activity()
+            ->useLog($logName)
+            ->withProperties($properties);
+
+        if (isset($request->ticket_id)) {
+            $ticket = Ticket::find($request->ticket_id);
+            if ($ticket) {
+                $activity->performedOn($ticket);
+            }
+        }
+
+        if (isset($request->user_id)) {
+            $user = User::find($request->user_id);
+            if ($user) {
+                $activity->causedBy($user);
+            }
+        } elseif (auth()->check()) {
+            $activity->causedBy(auth()->user());
+        }
+
+        return $activity->log($description);
     }
 }
