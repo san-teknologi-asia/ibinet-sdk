@@ -237,7 +237,7 @@ class TechnicianBorrowService
     private static function createExpenseReport($borrow)
     {
         try {
-            $borrow->load(['technician', 'borrowerProject', 'remotes.remote']);
+            $borrow->load(['technician', 'borrowerProject', 'remotes.remote', 'lenderApproval.approver']);
 
             // Use a default estimated cost since we removed pricing fields
             $totalCost = 100000; // Default amount, can be adjusted as needed
@@ -246,7 +246,8 @@ class TechnicianBorrowService
             $erCode = ExpenseReportHelper::generateERCode();
 
             // Create Expense Report
-            $lenderInfo = $borrow->lenderProject ? $borrow->lenderProject->name : 'External';
+            $lenderInfo = $borrow->lenderApproval ? $borrow->lenderApproval->approver->name : 'External';
+            
             $expenseReport = ExpenseReport::create([
                 'code' => $erCode,
                 'name' => "Technician Borrowing - {$borrow->technician->name} - {$borrow->borrow_code}",
@@ -722,14 +723,15 @@ class TechnicianBorrowService
                 'notes' => ($borrow->notes ?? '') . "\nCancellation reason: " . ($reason ?? 'Not specified')
             ]);
 
+            
             // Cancel all remotes
             TechnicianBorrowRemote::where('technician_borrow_id', $borrow_id)
-                ->update(['status' => 'CANCELLED']);
-
+            ->update(['status' => 'CANCELLED']);
+            
             // Cancel expense report if exists
             if ($borrow->expense_report_id) {
-                ExpenseReport::find($borrow->expense_report_id)
-                    ->update(['status' => 'CANCELLED']);
+                ExpenseReport::where('id', $borrow->expense_report_id)
+                ->update(['status' => 'CANCELLED']);
             }
 
             // Remove technician from project if assigned
@@ -765,7 +767,6 @@ class TechnicianBorrowService
         
         try {
             $borrow = TechnicianBorrow::find($borrow_id);
-            dd($borrow);
             
             if (!$borrow) {
                 DB::rollBack();
