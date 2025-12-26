@@ -881,4 +881,70 @@ class TechnicianBorrowService
             ];
         }
     }
+
+    /**
+     * Start scheduled borrows (Cron Job)
+     *
+     * @return array
+     */
+    public static function startScheduledBorrows()
+    {
+        $count = 0;
+        $borrows = TechnicianBorrow::where('status', 'APPROVED')
+            ->whereDate('start_date', '<=', now())
+            ->get();
+
+        foreach ($borrows as $borrow) {
+            DB::beginTransaction();
+            try {
+                $borrow->update(['status' => 'IN_PROGRESS']);
+                
+                // Ensure technician is assigned
+                self::assignTechnicianToProject($borrow->technician_id, $borrow->borrower_project_id);
+                
+                DB::commit();
+                $count++;
+            } catch (\Exception $e) {
+                DB::rollBack();
+                \Log::error("Error starting borrow {$borrow->borrow_code}: {$e->getMessage()}");
+            }
+        }
+
+        return ['count' => $count];
+    }
+
+    /**
+     * Complete scheduled borrows (Cron Job)
+     *
+     * @return array
+     */
+    public static function completeScheduledBorrows()
+    {
+        $count = 0;
+        // Find borrows that are in progress and end date has passed
+        $borrows = TechnicianBorrow::where('status', 'IN_PROGRESS')
+            ->whereDate('end_date', '<', now())
+            ->get();
+
+        foreach ($borrows as $borrow) {
+            DB::beginTransaction();
+            try {
+                // $borrow->update([
+                //     'status' => 'COMPLETED',
+                //     'actual_end_date' => $borrow->end_date // Assume completed on planned date
+                // ]);
+                
+                // Remove technician from project
+                self::removeTechnicianFromProject($borrow->technician_id, $borrow->borrower_project_id);
+                
+                DB::commit();
+                $count++;
+            } catch (\Exception $e) {
+                DB::rollBack();
+                \Log::error("Error completing borrow {$borrow->borrow_code}: {$e->getMessage()}");
+            }
+        }
+
+        return ['count' => $count];
+    }
 }
