@@ -108,6 +108,26 @@ class Project extends Model
     }
 
     /**
+     * The user finance that belong to the Project
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\BelongsToMany
+     */
+    public function userFinances()
+    {
+        return $this->belongsToMany('Ibinet\Models\User', 'user_projects', 'project_id_finance', 'user_id');
+    }
+
+    /**
+     * The user helpdesk that belong to the Project
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\BelongsToMany
+     */
+    public function userHelpdesks()
+    {
+        return $this->belongsToMany('Ibinet\Models\User', 'user_projects', 'project_id_helpdesk', 'user_id');
+    }
+
+    /**
      * The requirements that belong to the Project
      *
      * @return \Illuminate\Database\Eloquent\Relations\BelongsToMany
