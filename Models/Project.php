@@ -108,6 +108,26 @@ class Project extends Model
     }
 
     /**
+     * The user finance that belong to the Project
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\BelongsToMany
+     */
+    public function userFinances()
+    {
+        return $this->belongsToMany('Ibinet\Models\User', 'user_projects', 'project_id_finance', 'user_id');
+    }
+
+    /**
+     * The user helpdesk that belong to the Project
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\BelongsToMany
+     */
+    public function userHelpdesks()
+    {
+        return $this->belongsToMany('Ibinet\Models\User', 'user_projects', 'project_id_helpdesk', 'user_id');
+    }
+
+    /**
      * The requirements that belong to the Project
      *
      * @return \Illuminate\Database\Eloquent\Relations\BelongsToMany
@@ -115,5 +135,32 @@ class Project extends Model
     public function requirements()
     {
         return $this->belongsToMany('Ibinet\Models\Requirement', 'project_requirements');
+    }
+
+    /**
+     * Get expense report remotes for this project
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\HasMany
+     */
+    public function expenseReportRemotes()
+    {
+        return $this->hasMany('Ibinet\Models\ExpenseReportRemote', 'project_id');
+    }
+
+    /**
+     * Get remote finances through expense report remotes
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\HasManyThrough
+     */
+    public function remoteFinances()
+    {
+        return $this->hasManyThrough(
+            'Ibinet\Models\RemoteFinance',
+            'Ibinet\Models\ExpenseReportRemote',
+            'project_id', // Foreign key on expense_report_remotes table
+            'expense_report_remote_id', // Foreign key on remote_finances table
+            'id', // Local key on projects table
+            'id' // Local key on expense_report_remotes table
+        );
     }
 }
