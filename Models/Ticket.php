@@ -83,6 +83,11 @@ class Ticket extends Model
         return $this->hasMany('Ibinet\Models\TicketTimer', 'ticket_id');
     }
 
+    public function firstHandlingByUser()
+    {
+        return $this->belongsTo('Ibinet\Models\User', 'first_handling_by');
+    }
+
     /**
      *  Setup model event hooks
      */
