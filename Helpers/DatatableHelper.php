@@ -273,6 +273,14 @@ class DatatableHelper
             }
         }
 
-        return $ticketStatus . '<br><br>' . $statusBadge . $workBadge;
+        // Add first handling status badge
+        $firstHandlingBadge = '';
+        if (isset($data->first_handling_status) && $data->first_handling_status != null) {
+            $fhBadgeClass = CustomHelper::getFirstHandlingBadge($data->first_handling_status);
+            $fhText = CustomHelper::mappingFirstHandlingStatus($data->first_handling_status);
+            $firstHandlingBadge = "<br><br><span class='badge {$fhBadgeClass}'>FH: {$fhText}</span>";
+        }
+
+        return $ticketStatus . '<br><br>' . $statusBadge . $workBadge . $firstHandlingBadge;
     }
 }

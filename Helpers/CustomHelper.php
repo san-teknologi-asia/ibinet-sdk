@@ -152,6 +152,61 @@ class CustomHelper
     }
 
     /**
+     * Get first handling status options
+     *
+     * @return array
+     */
+    public static function getFirstHandlingStatus()
+    {
+        return [
+            [
+                'value' => 'PENDING',
+                'text' => 'Pending',
+                'badge' => 'bg-warning',
+            ],
+            [
+                'value' => 'NEED_TECHNICIAN',
+                'text' => 'Need Technician',
+                'badge' => 'bg-info',
+            ],
+            [
+                'value' => 'DONE',
+                'text' => 'Done',
+                'badge' => 'bg-success',
+            ],
+        ];
+    }
+
+    /**
+     * Map first handling status to badge class
+     *
+     * @param String $status
+     * @return String
+     */
+    public static function getFirstHandlingBadge($status)
+    {
+        $statuses = collect(self::getFirstHandlingStatus());
+        $match = $statuses->firstWhere('value', $status);
+        return $match ? $match['badge'] : 'bg-secondary';
+    }
+
+    /**
+     * Map first handling status to display text
+     *
+     * @param String $status
+     * @return String
+     */
+    public static function mappingFirstHandlingStatus($status)
+    {
+        if ($status == null) {
+            return '-';
+        }
+        $statuses = collect(self::getFirstHandlingStatus());
+        $match = $statuses->firstWhere('value', $status);
+        return $match ? $match['text'] : $status;
+    }
+
+    /**
      * Check and recreate ticket for teknisi
      */
     public static function assignToExpenseReport($request, $ticket_id)
