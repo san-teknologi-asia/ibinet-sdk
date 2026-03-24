@@ -2,6 +2,8 @@
 
 namespace Ibinet\Helpers;
 
+use Ibinet\Models\UserProject;
+
 class ConditionalHelper{
     public static function checkHelpdeskDoneStatus($field)
     {
@@ -60,5 +62,39 @@ class ConditionalHelper{
     public static function doneStatusArray()
     {
         return ['DONE', 'PENDING WITH PROBLEM', 'DISMANTLE'];
+    }
+
+    /**
+     * Check if user is a project manager for a specific project
+     * User must:
+     * 1. Have a role containing "Project Manager" or "PM"
+     * 2. Be assigned to the project via user_projects table
+     *
+     * @param string $userId
+     * @param string $projectId
+     * @return bool
+     */
+    public static function isProjectManagerForProject($userId, $projectId)
+    {
+        $user = \Ibinet\Models\User::with('role')->find($userId);
+
+        if (!$user || !$user->role) {
+            return false;
+        }
+
+        // Check if user has Project Manager role
+        $roleName = strtolower($user->role->name ?? '');
+        $isPmRole = strpos($roleName, 'project manager') !== false || strpos($roleName, 'pm') !== false;
+
+        if (!$isPmRole) {
+            return false;
+        }
+
+        // Check if user is assigned to this project
+        $userProject = UserProject::where('user_id', $userId)
+            ->where('project_id', $projectId)
+            ->exists();
+
+        return $userProject;
     }
 }
