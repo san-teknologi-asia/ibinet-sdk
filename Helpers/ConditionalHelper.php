@@ -2,6 +2,7 @@
 
 namespace Ibinet\Helpers;
 
+use Ibinet\Models\User;
 use Ibinet\Models\UserProject;
 
 class ConditionalHelper{
@@ -76,7 +77,7 @@ class ConditionalHelper{
      */
     public static function isProjectManagerForProject($userId, $projectId)
     {
-        $user = \Ibinet\Models\User::with('role')->find($userId);
+        $user = User::with('role')->find($userId);
 
         if (!$user || !$user->role) {
             return false;
@@ -96,5 +97,43 @@ class ConditionalHelper{
             ->exists();
 
         return $userProject;
+    }
+
+    /**
+     * Check if user can assign technician for a ticket
+     * User must be one of:
+     * 1. Project Manager for this specific project (via user_projects)
+     * 2. Supervisor role
+     * 3. Coordinator role
+     *
+     * @param string $userId
+     * @param string $projectId
+     * @return bool
+     */
+    public static function canAssignTechnician($userId, $projectId)
+    {
+        $user = User::with('role')->find($userId);
+
+        if (!$user || !$user->role) {
+            return false;
+        }
+
+        $roleName = strtolower($user->role->name ?? '');
+        $roleId = $user->role_id;
+
+        // Check if user is Project Manager for this project
+        if (self::isProjectManagerForProject($userId, $projectId)) {
+            return true;
+        }
+
+        // Check if user is Supervisor or Coordinator
+        $supervisorRoleId = env('ROLE_SUPERVISOR');
+        $coordinatorRoleId = env('ROLE_COORDINATOR');
+
+        if ($roleId == $supervisorRoleId || $roleId == $coordinatorRoleId) {
+            return true;
+        }
+
+        return false;
     }
 }
