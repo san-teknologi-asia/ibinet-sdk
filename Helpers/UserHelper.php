@@ -9,9 +9,12 @@ class UserHelper
 
     public static function getUserRegionArray($auth)
     {
-        $regions = [];
+        if (!$auth) {
+            return [];
+        }
 
-        foreach ($auth->region as $region) {
+        $regions = [];
+        foreach ($auth->region ?? [] as $region) {
             $regions[] = $region->id;
         }
 
@@ -20,9 +23,12 @@ class UserHelper
 
     public static function getUserHomebaseArray($auth)
     {
-        $homebases = [];
+        if (!$auth) {
+            return [];
+        }
 
-        foreach ($auth->homebase as $homebase) {
+        $homebases = [];
+        foreach ($auth->homebase ?? [] as $homebase) {
             $homebases[] = $homebase->id;
         }
 
@@ -31,9 +37,12 @@ class UserHelper
 
     public static function getUserProjectArray($auth)
     {
-        $projects = [];
+        if (!$auth) {
+            return [];
+        }
 
-        foreach ($auth->project as $project) {
+        $projects = [];
+        foreach ($auth->project ?? [] as $project) {
             $projects[] = $project->id;
         }
 
@@ -69,10 +78,7 @@ class UserHelper
             })->filter()->unique()->values()->toArray();
         } elseif (in_array('IBOS', $modules)) {
             $rows = UserProject::where('user_id', $userId)
-                ->where(function ($q) {
-                    $q->where('type', UserProject::TYPE_PROJECT_MANAGER)
-                        ->orWhereNotNull('project_id');
-                })
+                ->where('type', UserProject::TYPE_PROJECT_MANAGER)
                 ->get();
 
             $userProjects = $rows->map(function ($row) {

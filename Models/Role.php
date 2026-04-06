@@ -34,44 +34,46 @@ class Role extends Model
         return $this->belongsTo(Role::class, 'parent_id');
     }
 
-    public function childrenRoles()
+    /**
+     * Get all descendant roles under this role using a bounded iterative traversal.
+     * Does not rely on MySQL session variables or recursive CTE.
+     *
+     * @param int $maxDepth Maximum depth to traverse (default 50)
+     * @return array<int, object> Array of stdClass objects with id, parent_id, name
+     */
+    public function childrenRoles(int $maxDepth = 50): array
     {
-        try {
-            // Set a reasonable recursion depth limit
-            DB::statement('SET SESSION cte_max_recursion_depth = 100');
-            
-            $roles = DB::select("
-                WITH RECURSIVE role_hierarchy AS (
-                    SELECT id, parent_id, name, 0 as depth
-                    FROM roles
-                    WHERE id = ?
+        $visited = [];
+        $currentLevel = [$this->id];
+        $result = [];
 
-                    UNION ALL
+        for ($depth = 1; $depth <= $maxDepth; $depth++) {
+            if (empty($currentLevel)) {
+                break;
+            }
 
-                    SELECT r.id, r.parent_id, r.name, rh.depth + 1
-                    FROM roles r
-                    INNER JOIN role_hierarchy rh ON r.parent_id = rh.id
-                    WHERE rh.depth < 50
-                )
-                SELECT id, parent_id, name FROM role_hierarchy
-                WHERE id != ?;
-            ", [$this->id, $this->id]);
+            $nextLevel = [];
 
-            return array_values($roles);
-        } catch (\Exception $e) {
-            // Log the error and return empty array to prevent application crash
-            \Log::error('Role hierarchy query failed: ' . $e->getMessage(), [
-                'role_id' => $this->id,
-                'trace' => $e->getTraceAsString()
-            ]);
-            
-            // Fallback: return direct children only
-            return DB::select("
+            $children = DB::select("
                 SELECT id, parent_id, name
                 FROM roles
-                WHERE parent_id = ? AND id != ?
-            ", [$this->id, $this->id]);
+                WHERE parent_id IN (?)
+                AND id NOT IN (?)
+            ", [implode(',', $currentLevel), implode(',', array_merge($visited, [$this->id]))]);
+
+            foreach ($children as $child) {
+                if (in_array($child->id, $visited, true)) {
+                    continue;
+                }
+                $visited[] = $child->id;
+                $result[] = $child;
+                $nextLevel[] = $child->id;
+            }
+
+            $currentLevel = $nextLevel;
         }
+
+        return $result;
     }
 
     /**

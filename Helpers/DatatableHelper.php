@@ -23,7 +23,7 @@ class DatatableHelper
         $text = "";
         $text .= "<b>Project Name : </b>" . ($data->project->name ?? '-') . "<br/>";
         $text .= "<b>ER Number : </b>" . ($data->expenseReport->code ?? '-') . "<br/>";
-        $text .= "<b>Technician : </b>" . ($data->expenseReport->assignmentTo->name ?? '-') . "<br/>";
+        $text .= "<b>Technician : </b>" . ($data->expenseReport?->assignmentTo?->name ?? '-') . "<br/>";
         $text .= "<b>Work Type : </b>" . ($data->workType->name ?? '-') . "<br/>";
         $text .= "<b>Home Base : </b>" . ($data->home_base ?? '-') . "<br/>";
         $text .= "<b>Ticket Ref : </b>" . ($data->ticket->code ?? '-') . "(" . ($data->ticket->client_code ?? '-') . ")<br/>";
@@ -60,7 +60,7 @@ class DatatableHelper
             $text = "<b class='text-primary'>{$remote->name}</b><br/>";
             $text .= "<b>IP LAN : </b>" . $remote->ip_lan . "<br/>";
             $text .= "<b>Site ID : </b>" . ($remote->site_id ? $remote->site_id : "-") . "<br/>";
-            $text .= "<b>Work Unit : </b>" . ($remote->workUnit->name ?? "-") . "<br/>";
+            $text .= "<b>Work Unit : </b>" . ($remote->workUnit?->name ?? "-") . "<br/>";
 
             return $text;
         } else {
@@ -90,7 +90,7 @@ class DatatableHelper
 
         // TODO: Not understand where the relation should be
         if ($data->phase != null) {
-            if (($data->remoteHelpdesk->process_date ?? null) != null) {
+            if (filled($data->remoteHelpdesk?->process_date)) {
                 $visitDate = date('d F Y', strtotime($data->remoteHelpdesk->process_date));
             }
         }

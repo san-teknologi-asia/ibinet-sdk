@@ -58,7 +58,7 @@ class FormHelper{
             $font->valign('bottom');
         });
 
-        $imageManager->text($request->upload_lat_long, $imageManager->width() - 20, $imageManager->height() - 100, function($font) {
+        $imageManager->text($request->upload_lat_long ?? '', $imageManager->width() - 20, $imageManager->height() - 100, function($font) {
             $font->file(public_path('fonts/Roboto/Roboto-Regular.ttf'));
             $font->size(18);
             $font->color('#00ff01');
@@ -66,7 +66,7 @@ class FormHelper{
             $font->valign('bottom');
         });
 
-        $imageManager->text($mapsObj->plus_code->compound_code ?? '-', $imageManager->width() - 20, $imageManager->height() - 70, function($font) {
+        $imageManager->text($mapsObj?->plus_code?->compound_code ?? '-', $imageManager->width() - 20, $imageManager->height() - 70, function($font) {
             $font->file(public_path('fonts/Roboto/Roboto-Regular.ttf'));
             $font->size(18);
             $font->color('#00ff01');
@@ -74,7 +74,7 @@ class FormHelper{
             $font->valign('bottom');
         });
 
-        $imageManager->text($expenseReport->assignmentTo->name, $imageManager->width() - 20, $imageManager->height() - 40, function($font) {
+        $imageManager->text($expenseReport->assignmentTo?->name ?? '-', $imageManager->width() - 20, $imageManager->height() - 40, function($font) {
             $font->file(public_path('fonts/Roboto/Roboto-Regular.ttf'));
             $font->size(18);
             $font->color('#00ff01');

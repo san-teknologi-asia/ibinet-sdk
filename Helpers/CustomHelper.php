@@ -127,23 +127,23 @@ class CustomHelper
     {
         $status = [
             (object)[
-                'value' => 'PENDING',
+                'value' => Ticket::STATUS_PENDING,
                 'text' => 'Pending'
             ],
             (object)[
-                'value' => 'ON PROGRESS',
+                'value' => Ticket::STATUS_ON_PROGRESS,
                 'text' => 'On Progress'
             ],
             (object)[
-                'value' => 'DONE',
+                'value' => Ticket::STATUS_DONE,
                 'text' => 'Done'
             ],
             (object)[
-                'value' => 'CANCELED',
+                'value' => Ticket::STATUS_CANCELED,
                 'text' => 'Canceled'
             ],
             (object)[
-                'value' => 'ON STOP CLOCK',
+                'value' => Ticket::STATUS_ON_STOP_CLOCK,
                 'text' => 'On Stop Clock'
             ],
         ];
@@ -220,6 +220,9 @@ class CustomHelper
 
         $workType = WorkType::where('code', 'CM')->first();
         $ticket = Ticket::find($ticket_id);
+        if (!$ticket) {
+            return;
+        }
         $remote_id = $ticket->remote_id ?? $request->remote_id;
 
         $remote = Remote::with([
@@ -227,20 +230,21 @@ class CustomHelper
             'homeBase',
         ])->where('id', $remote_id)->first();
 
-        $homeBase = $remote->homeBase->name ?? '';
-        $technician = $user->name ?? null;
+        $homeBase = $remote?->homeBase?->name ?? '';
+        $technician = $user?->name;
 
         if ($technician != null) {
             $expenseName = "Progress CM - {$technician}";
 
             if (!$activeExpenseReport) {
+                $createdBy = auth()->user()?->id ?? auth('api')->user()?->id;
                 $expenseReport = ExpenseReport::create([
                     'code'          => ExpenseReportHelper::generateERCode(),
                     'name'          => $expenseName,
                     'amount'        => $ticket->initial_amount ?? 100000,
                     'assignment_to' => $request->user_id,
                     'remark'        => $expenseName,
-                    'created_by'    => auth()->user()->id ?? auth('api')->user()->id
+                    'created_by'    => $createdBy
                 ]);
 
                 ExpenseReportRequest::create([
@@ -260,18 +264,18 @@ class CustomHelper
                 'project_id'          => $ticket->project_id,
                 'ticket_id'           => $ticket_id,
                 'phase'               => $ticket->phase,
-                'work_type_id'        => $workType->id,
-                'work_unit'           => $remote->workUnit->name ?? null,
+                'work_type_id'       => $workType?->id,
+                'work_unit'           => $remote?->workUnit?->name ?? null,
                 'bc_tid'              => $remote->bc_tid ?? '-',
                 'name'                => $remote->name,
                 'ip_lan'              => $remote->ip_lan,
                 'ip_p2p_modem'        => $remote->ip_p2p_modem,
                 'site_id'             => $remote->site_id,
-                'remote_type'         => $remote->remoteType->name ?? null,
-                'link'                => $remote->link->name ?? null,
-                'remote_territory'    => $remote->territory->name ?? null,
-                'supervision'         => $remote->supervision->name ?? null,
-                'home_base'           => $remote->homeBase->name ?? null,
+                'remote_type'         => $remote?->remoteType?->name ?? null,
+                'link'                => $remote?->link?->name ?? null,
+                'remote_territory'    => $remote?->territory?->name ?? null,
+                'supervision'         => $remote?->supervision?->name ?? null,
+                'home_base'           => $remote?->homeBase?->name ?? null,
                 'address'             => $remote->address,
                 'province_code'       => $remote->province_code,
                 'city_code'           => $remote->city_code,

@@ -36,6 +36,9 @@ class ExpenseReportHelper
     public static function generateRequestCode($er_id)
     {
         $expenseReport = ExpenseReport::find($er_id);
+        if (!$expenseReport) {
+            return null;
+        }
         $expenseReportRequest = ExpenseReportRequest::where('expense_report_id', $er_id)->count();
 
         $erRequestCode = "FR-" . $expenseReport->code . '-' . str_pad($expenseReportRequest + 1, 2, '0', STR_PAD_LEFT);
@@ -52,6 +55,9 @@ class ExpenseReportHelper
     public static function generateTransactionCode($er_id)
     {
         $expenseReport = ExpenseReport::find($er_id);
+        if (!$expenseReport) {
+            return null;
+        }
         $expenseReportTransaction = ExpenseReportBalance::where('expense_report_id', $er_id)
             ->where('code', 'like', 'TR-%')
             // ->where('credit', '>', 0)

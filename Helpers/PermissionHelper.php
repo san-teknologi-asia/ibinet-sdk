@@ -7,7 +7,11 @@ use Illuminate\Support\Facades\Auth;
 function has($permission)
 {
     try {
-        $authRoles = Auth::user()->role_id;
+        $user = Auth::user();
+        if (!$user) {
+            return false;
+        }
+        $authRoles = $user->role_id;
         // $userId = Auth::user()->id;
         // $cacheKey = "permission_user_{$userId}_role_{$authRoles}";
         

@@ -20,6 +20,12 @@ class Ticket extends Model
 
     public $keyType = 'string';
 
+    public const STATUS_PENDING = 'PENDING';
+    public const STATUS_ON_PROGRESS = 'ON PROGRESS';
+    public const STATUS_DONE = 'DONE';
+    public const STATUS_CANCELED = 'CANCELED';
+    public const STATUS_ON_STOP_CLOCK = 'ON STOP CLOCK';
+
     // log activity
     public function getActivitylogOptions(): LogOptions
     {

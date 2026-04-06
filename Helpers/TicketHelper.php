@@ -18,6 +18,9 @@ class TicketHelper
      */
     public static function assignToExpenseReport($request, $ticket_id)
     {
+        $user = null;
+        $activeExpenseReport = null;
+
         if ($request->user_id) {
             $activeExpenseReport = ExpenseReport::where([
                 'assignment_to' => $request->user_id,
@@ -29,21 +32,25 @@ class TicketHelper
 
         $workType = WorkType::where('code', 'CM')->first();
         $ticket = Ticket::find($ticket_id);
+        if (!$ticket) {
+            return;
+        }
+
         $remote_id = $ticket->remote_id ?? $request->remote_id;
+        $technician = $user?->name;
 
-        $technician = $user->name ?? null;
-
-        if ($technician != null) {
+        if ($technician != null && $workType) {
             $expenseName = "Progress CM - {$technician}";
 
             if (!$activeExpenseReport) {
+                $createdBy = auth()->user()?->id ?? auth('api')->user()?->id;
                 $expenseReport = ExpenseReport::create([
                     'code' => ExpenseReportHelper::generateERCode(),
                     'name' => $expenseName,
                     'amount' => $ticket->initial_amount ?? 100000,
                     'assignment_to' => $request->user_id,
                     'remark' => $expenseName,
-                    'created_by' => auth()->user()->id ?? auth('api')->user()->id
+                    'created_by' => $createdBy
                 ]);
 
                 ExpenseReportRequest::create([
@@ -84,13 +91,14 @@ class TicketHelper
             }
         } else {
             $expenseName = "First handling not assigned to any technician";
+            $createdBy = auth()->user()?->id ?? auth('api')->user()?->id;
             $expenseReport = ExpenseReport::create([
                 'code' => ExpenseReportHelper::generateERCode(),
                 'name' => $expenseName,
                 'amount' => $ticket->initial_amount ?? 100000,
                 'assignment_to' => "-",
                 'remark' => $expenseName,
-                'created_by' => auth()->user()->id ?? auth('api')->user()->id,
+                'created_by' => $createdBy,
                 'is_tech' => false
             ]);
 
@@ -104,19 +112,21 @@ class TicketHelper
 
             $activeExpenseReport = $expenseReport;
 
-            ExpenseReportRemote::create([
-                'expense_report_id' => $activeExpenseReport->id,
-                'remote_id' => $remote_id,
-                'project_id' => $ticket->project_id,
-                'ticket_id' => $ticket_id,
-                'phase' => $ticket->phase,
-                'work_type_id' => $workType->id,
-                'schedule_id' => null,
-                'date' => now(),
-                'is_process_helpdesk' => false,
-                'is_process_admin' => false,
-                'helpdesk_status' => 'PENDING'
-            ]);
+            if ($workType) {
+                ExpenseReportRemote::create([
+                    'expense_report_id' => $activeExpenseReport->id,
+                    'remote_id' => $remote_id,
+                    'project_id' => $ticket->project_id,
+                    'ticket_id' => $ticket_id,
+                    'phase' => $ticket->phase,
+                    'work_type_id' => $workType->id,
+                    'schedule_id' => null,
+                    'date' => now(),
+                    'is_process_helpdesk' => false,
+                    'is_process_admin' => false,
+                    'helpdesk_status' => 'PENDING'
+                ]);
+            }
         }
     }
 

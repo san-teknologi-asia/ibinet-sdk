@@ -67,10 +67,8 @@ class ConditionalHelper{
     }
 
     /**
-     * Check if user is a project manager for a specific project
-     * User must:
-     * 1. Have a role containing "Project Manager" or "PM"
-     * 2. Be assigned to the project via user_projects table
+     * Check if user is a project manager for a specific project.
+     * Requires explicit user_project assignment with type = PROJECT_MANAGER.
      *
      * @param string $userId
      * @param string $projectId
@@ -78,45 +76,19 @@ class ConditionalHelper{
      */
     public static function isProjectManagerForProject($userId, $projectId)
     {
-        // New dynamic assignment source: explicit project type.
-        $typedProjectManager = UserProject::where('user_id', $userId)
+        return UserProject::where('user_id', $userId)
             ->where('project_id', $projectId)
             ->where('type', UserProject::TYPE_PROJECT_MANAGER)
             ->exists();
-
-        if ($typedProjectManager) {
-            return true;
-        }
-
-        // Backward compatibility for legacy records without type.
-        $user = User::with('role')->find($userId);
-
-        if (!$user || !$user->role) {
-            return false;
-        }
-
-        // Check if user has Project Manager role
-        $roleName = strtolower($user->role->name ?? '');
-        $isPmRole = strpos($roleName, 'project manager') !== false || strpos($roleName, 'pm') !== false;
-
-        if (!$isPmRole) {
-            return false;
-        }
-
-        // Check if user is assigned to this project
-        $userProject = UserProject::where('user_id', $userId)
-            ->where('project_id', $projectId)
-            ->exists();
-
-        return $userProject;
     }
 
     /**
-     * Check if user can assign technician for a ticket
-     * User must be one of:
-     * 1. Project Manager for this specific project (via user_projects)
-     * 2. Supervisor role
-     * 3. Coordinator role
+     * Check if user can assign technician for a ticket.
+     * User must be:
+     * 1. Assigned to the project, and
+     * 2. Have a role that is either the PM role on this project or any descendant role
+     *    under that PM in the role hierarchy, and
+     * 3. NOT be a technician/engineering role.
      *
      * @param string $userId
      * @param string $projectId
@@ -143,7 +115,8 @@ class ConditionalHelper{
         $userRoleId = $user->role_id;
 
         // Explicitly prevent technician/engineering role from assigning.
-        $isTechnicianRole = strpos($roleName, 'technician') !== false || strpos($roleName, 'engineering') !== false;
+        $isTechnicianRole = strpos($roleName, 'technician') !== false
+            || strpos($roleName, 'engineering') !== false;
         if ($isTechnicianRole) {
             return false;
         }
@@ -155,32 +128,14 @@ class ConditionalHelper{
             ->unique()
             ->values();
 
+        if ($projectManagerUserIds->isEmpty()) {
+            return false;
+        }
+
         $projectManagerRoleIds = User::whereIn('id', $projectManagerUserIds)
             ->pluck('role_id')
             ->unique()
             ->values();
-
-        // Backward compatibility if type has not been populated yet.
-        if ($projectManagerRoleIds->isEmpty()) {
-            $projectManagerRoleIds = User::query()
-                ->with('role:id,name')
-                ->whereHas('project', function ($query) use ($projectId) {
-                    $query->where('projects.id', $projectId);
-                })
-                ->get()
-                ->filter(function ($projectUser) {
-                    $roleName = strtolower($projectUser->role->name ?? '');
-                    return strpos($roleName, 'project manager') !== false
-                        || (bool) preg_match('/\bpm\b/', $roleName);
-                })
-                ->pluck('role_id')
-                ->unique()
-                ->values();
-        }
-
-        if ($projectManagerRoleIds->isEmpty()) {
-            return false;
-        }
 
         // User with PM role for this project can assign.
         if ($projectManagerRoleIds->contains($userRoleId)) {
@@ -188,17 +143,19 @@ class ConditionalHelper{
         }
 
         // User with any descendant role under project PM can assign (dynamic hierarchy).
-        $allowedRoleIds = collect();
+        $allowedRoleIds = [];
         foreach ($projectManagerRoleIds as $pmRoleId) {
             $pmRole = Role::find($pmRoleId);
             if (!$pmRole) {
                 continue;
             }
 
-            $childRoleIds = collect($pmRole->childrenRoles())->pluck('id');
-            $allowedRoleIds = $allowedRoleIds->merge($childRoleIds);
+            $children = $pmRole->childrenRoles();
+            foreach ($children as $child) {
+                $allowedRoleIds[] = $child->id;
+            }
         }
 
-        return $allowedRoleIds->unique()->contains($userRoleId);
+        return in_array($userRoleId, array_unique($allowedRoleIds), true);
     }
 }

@@ -11,3 +11,24 @@ alwaysApply: true
 - Preserve helper APIs (`has()`, `setting()`, route helpers) and Blade directives because many apps depend on them.
 - Maintain compatibility for critical services like `ApprovalService` and `TechnicianBorrowService`.
 - Prefer extending existing `Ibinet\Models\*` conventions (UUIDs, SoftDeletes, activity logging patterns).
+
+## Import Convention (Strict)
+
+All consuming apps MUST use PHP `use` statements at the top of files. **Never call SDK classes, models, or helpers via direct FQCN inline strings** (e.g. `\Ibinet\Helpers\UserHelper::getUserProjectByRoles(...)`).
+
+Correct:
+```php
+use Ibinet\Helpers\UserHelper;
+use Ibinet\Helpers\ConditionalHelper;
+
+UserHelper::getUserProjectByRoles($id, ['IBOS']);
+ConditionalHelper::canAssignTechnician($userId, $projectId);
+```
+
+Incorrect (forbidden):
+```php
+\Ibinet\Helpers\UserHelper::getUserProjectByRoles(...);   // ❌ FQCN inline
+\Ibinet\Models\User::find(...);                           // ❌ FQCN inline
+```
+
+This rule applies to ALL files in all consuming apps (idc, ier, omc, ifos, ibinet-sso).
