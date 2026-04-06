@@ -1,0 +1,13 @@
+---
+description: ibinet-sdk PHP file guardrails
+globs: "{src/**/*.php,Ibinet/**/*.php,config/**/*.php}"
+alwaysApply: false
+---
+
+# ibinet-sdk Implementation Guardrails
+
+- Prefer backward-compatible changes because multiple applications consume this package directly.
+- When editing models, keep relationships, casts, and key conventions stable unless migration strategy is explicit.
+- Keep helpers small and composable; avoid introducing app-coupled assumptions.
+- For shared services, preserve approval and technician-borrow flow contracts and status transitions.
+- Validate new behavior against cross-app usage patterns before refactors.

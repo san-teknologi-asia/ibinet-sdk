@@ -2,6 +2,8 @@
 
 namespace Ibinet\Helpers;
 
+use Ibinet\Models\UserProject;
+
 class UserHelper
 {
 
@@ -49,27 +51,37 @@ class UserHelper
     {
         $modules = is_array($modules) ? $modules : [$modules];
 
-        $query = \Ibinet\Models\UserProject::where('user_id', $userId)
-            ->where(function ($q) use ($modules) {
-                if (in_array('OMC', $modules)) {
-                    $q->orWhere('project_id_helpdesk', '!=', null);
-                }
-                if (in_array('IFAS', $modules)) {
-                    $q->orWhere('project_id_finance', '!=', null);
-                }
-                if (in_array('IBOS', $modules)) {
-                    $q->orWhere('project_id', '!=', null);
-                }
-            });
         if (in_array('OMC', $modules)) {
-            $userProjects = $query->pluck('project_id_helpdesk')->toArray();
+            $rows = UserProject::where('user_id', $userId)
+                ->where('type', UserProject::TYPE_HELPDESK)
+                ->get();
+
+            $userProjects = $rows->map(function ($row) {
+                return $row->project_id;
+            })->filter()->unique()->values()->toArray();
         } elseif (in_array('IFAS', $modules)) {
-            $userProjects = $query->pluck('project_id_finance')->toArray();
+            $rows = UserProject::where('user_id', $userId)
+                ->where('type', UserProject::TYPE_FINANCE)
+                ->get();
+
+            $userProjects = $rows->map(function ($row) {
+                return $row->project_id;
+            })->filter()->unique()->values()->toArray();
         } elseif (in_array('IBOS', $modules)) {
-            $userProjects = $query->pluck('project_id')->toArray();
+            $rows = UserProject::where('user_id', $userId)
+                ->where(function ($q) {
+                    $q->where('type', UserProject::TYPE_PROJECT_MANAGER)
+                        ->orWhereNotNull('project_id');
+                })
+                ->get();
+
+            $userProjects = $rows->map(function ($row) {
+                return $row->project_id;
+            })->filter()->unique()->values()->toArray();
         } else {
             $userProjects = [];
         }
+
         return ['projects' => $userProjects];
     }
 }

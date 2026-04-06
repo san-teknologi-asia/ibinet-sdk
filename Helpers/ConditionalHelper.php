@@ -2,6 +2,7 @@
 
 namespace Ibinet\Helpers;
 
+use Ibinet\Models\Role;
 use Ibinet\Models\User;
 use Ibinet\Models\UserProject;
 
@@ -77,6 +78,17 @@ class ConditionalHelper{
      */
     public static function isProjectManagerForProject($userId, $projectId)
     {
+        // New dynamic assignment source: explicit project type.
+        $typedProjectManager = UserProject::where('user_id', $userId)
+            ->where('project_id', $projectId)
+            ->where('type', UserProject::TYPE_PROJECT_MANAGER)
+            ->exists();
+
+        if ($typedProjectManager) {
+            return true;
+        }
+
+        // Backward compatibility for legacy records without type.
         $user = User::with('role')->find($userId);
 
         if (!$user || !$user->role) {
@@ -118,22 +130,75 @@ class ConditionalHelper{
             return false;
         }
 
+        // Must be assigned to this project first.
+        $isAssignedToProject = UserProject::where('user_id', $userId)
+            ->where('project_id', $projectId)
+            ->exists();
+
+        if (!$isAssignedToProject) {
+            return false;
+        }
+
         $roleName = strtolower($user->role->name ?? '');
-        $roleId = $user->role_id;
+        $userRoleId = $user->role_id;
 
-        // Check if user is Project Manager for this project
-        if (self::isProjectManagerForProject($userId, $projectId)) {
+        // Explicitly prevent technician/engineering role from assigning.
+        $isTechnicianRole = strpos($roleName, 'technician') !== false || strpos($roleName, 'engineering') !== false;
+        if ($isTechnicianRole) {
+            return false;
+        }
+
+        // Determine PM role(s) dynamically from project assignment type.
+        $projectManagerUserIds = UserProject::where('project_id', $projectId)
+            ->where('type', UserProject::TYPE_PROJECT_MANAGER)
+            ->pluck('user_id')
+            ->unique()
+            ->values();
+
+        $projectManagerRoleIds = User::whereIn('id', $projectManagerUserIds)
+            ->pluck('role_id')
+            ->unique()
+            ->values();
+
+        // Backward compatibility if type has not been populated yet.
+        if ($projectManagerRoleIds->isEmpty()) {
+            $projectManagerRoleIds = User::query()
+                ->with('role:id,name')
+                ->whereHas('project', function ($query) use ($projectId) {
+                    $query->where('projects.id', $projectId);
+                })
+                ->get()
+                ->filter(function ($projectUser) {
+                    $roleName = strtolower($projectUser->role->name ?? '');
+                    return strpos($roleName, 'project manager') !== false
+                        || (bool) preg_match('/\bpm\b/', $roleName);
+                })
+                ->pluck('role_id')
+                ->unique()
+                ->values();
+        }
+
+        if ($projectManagerRoleIds->isEmpty()) {
+            return false;
+        }
+
+        // User with PM role for this project can assign.
+        if ($projectManagerRoleIds->contains($userRoleId)) {
             return true;
         }
 
-        // Check if user is Supervisor or Coordinator
-        $supervisorRoleId = env('ROLE_SUPERVISOR');
-        $coordinatorRoleId = env('ROLE_COORDINATOR');
+        // User with any descendant role under project PM can assign (dynamic hierarchy).
+        $allowedRoleIds = collect();
+        foreach ($projectManagerRoleIds as $pmRoleId) {
+            $pmRole = Role::find($pmRoleId);
+            if (!$pmRole) {
+                continue;
+            }
 
-        if ($roleId == $supervisorRoleId || $roleId == $coordinatorRoleId) {
-            return true;
+            $childRoleIds = collect($pmRole->childrenRoles())->pluck('id');
+            $allowedRoleIds = $allowedRoleIds->merge($childRoleIds);
         }
 
-        return false;
+        return $allowedRoleIds->unique()->contains($userRoleId);
     }
 }

@@ -114,7 +114,8 @@ class Project extends Model
      */
     public function userFinances()
     {
-        return $this->belongsToMany('Ibinet\Models\User', 'user_projects', 'project_id_finance', 'user_id');
+        return $this->belongsToMany('Ibinet\Models\User', 'user_projects', 'project_id', 'user_id')
+            ->wherePivot('type', UserProject::TYPE_FINANCE);
     }
 
     /**
@@ -124,7 +125,8 @@ class Project extends Model
      */
     public function userHelpdesks()
     {
-        return $this->belongsToMany('Ibinet\Models\User', 'user_projects', 'project_id_helpdesk', 'user_id');
+        return $this->belongsToMany('Ibinet\Models\User', 'user_projects', 'project_id', 'user_id')
+            ->wherePivot('type', UserProject::TYPE_HELPDESK);
     }
 
     /**

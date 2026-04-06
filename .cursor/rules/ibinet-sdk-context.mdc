@@ -1,0 +1,13 @@
+---
+description: ibinet-sdk shared package context
+alwaysApply: true
+---
+
+# ibinet-sdk Context
+
+- This package is the shared source of truth for cross-app models, helpers, middleware, and services.
+- Keep framework-agnostic package quality; avoid app-specific business logic unless it is intentionally shared.
+- Do not add migrations here; shared schema is maintained mainly by IDC.
+- Preserve helper APIs (`has()`, `setting()`, route helpers) and Blade directives because many apps depend on them.
+- Maintain compatibility for critical services like `ApprovalService` and `TechnicianBorrowService`.
+- Prefer extending existing `Ibinet\Models\*` conventions (UUIDs, SoftDeletes, activity logging patterns).
