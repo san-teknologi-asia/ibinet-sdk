@@ -7,7 +7,6 @@ use Ibinet\Models\TechnicianBorrowRemote;
 use Ibinet\Models\TechnicianBorrowApproval;
 use Ibinet\Models\TechnicianBorrowContractChange;
 use Ibinet\Models\ExpenseReport;
-use Ibinet\Models\ExpenseReportRequest;
 use Ibinet\Models\ExpenseReportRemote;
 use Ibinet\Models\UserProject;
 use Ibinet\Helpers\TechnicianBorrowHelper;
@@ -61,7 +60,7 @@ class TechnicianBorrowService
                 foreach ($data['remotes'] as $remote) {
                     TechnicianBorrowRemote::create([
                         'technician_borrow_id' => $borrow->id,
-                        'remote_id' => $remote['remote_id'],
+                        'remote_id' => $remote['remote_id'] ?? null,
                         'work_type_id' => $remote['work_type_id'] ?? null,
                         'estimated_duration' => $remote['estimated_duration'] ?? null,
                         'scheduled_date' => $remote['scheduled_date'] ?? null,
@@ -239,15 +238,16 @@ class TechnicianBorrowService
         try {
             $borrow->load(['technician', 'borrowerProject', 'remotes.remote', 'lenderApproval.approver']);
 
-            // Use a default estimated cost since we removed pricing fields
-            $totalCost = 100000; // Default amount, can be adjusted as needed
+            // Borrowing a technician is free, so the report starts with no budget.
+            // Funds are added afterwards through the normal fund request flow.
+            $totalCost = 0;
 
             // Generate ER code
             $erCode = ExpenseReportHelper::generateERCode();
 
             // Create Expense Report
             $lenderInfo = $borrow->lenderApproval ? $borrow->lenderApproval->approver->name : 'External';
-            
+
             $expenseReport = ExpenseReport::create([
                 'code' => $erCode,
                 'name' => "Technician Borrowing - {$borrow->technician->name} - {$borrow->borrow_code}",
@@ -258,17 +258,9 @@ class TechnicianBorrowService
                 'remark' => "Borrowed from {$lenderInfo} for {$borrow->borrowerProject->name}. Period: {$borrow->start_date->format('d M Y')} - {$borrow->end_date->format('d M Y')}"
             ]);
 
-            // Create Expense Report Request (auto-approved)
-            ExpenseReportRequest::create([
-                'expense_report_id' => $expenseReport->id,
-                'project_id' => $borrow->borrower_project_id,
-                'amount' => $totalCost,
-                'code' => $erCode . '-REQ-' . $borrow->borrow_code,
-                'status' => 'APPROVED',
-                'remark' => "Initial budget for technician borrowing {$borrow->borrow_code}"
-            ]);
-
-            // Create Expense Report Remotes
+            // Create one expense record per borrowed remote. A borrow does not
+            // have to name any remote, in which case the report simply carries
+            // no expense records until the technician files transactions.
             foreach ($borrow->remotes as $borrowRemote) {
                 ExpenseReportRemote::create([
                     'expense_report_id' => $expenseReport->id,
@@ -277,16 +269,7 @@ class TechnicianBorrowService
                     'work_type_id' => $borrowRemote->work_type_id,
                     'status' => 'PENDING',
                     'phase' => 1,
-                    'work_unit' => $borrowRemote->remote->workUnit->name ?? null,
-                    'bc_tid' => $borrowRemote->remote->bc_tid ?? '-',
-                    'name' => $borrowRemote->remote->name,
-                    'ip_lan' => $borrowRemote->remote->ip_lan,
-                    'ip_p2p_modem' => $borrowRemote->remote->ip_p2p_modem,
-                    'site_id' => $borrowRemote->remote->site_id,
-                    'supervision' => $borrowRemote->remote->supervision,
                     'date' => $borrowRemote->scheduled_date ?? $borrow->start_date,
-                    'is_process_helpdesk' => false,
-                    'is_process_admin' => false
                 ]);
             }
 
@@ -548,25 +531,14 @@ class TechnicianBorrowService
 
         // Add to expense report if exists
         if ($borrow->expense_report_id) {
-            $remote = \Ibinet\Models\Remote::find($changeData['remote_id']);
-            
             ExpenseReportRemote::create([
                 'expense_report_id' => $borrow->expense_report_id,
-                'remote_id' => $changeData['remote_id'],
+                'remote_id' => $changeData['remote_id'] ?? null,
                 'project_id' => $borrow->borrower_project_id,
                 'work_type_id' => $changeData['work_type_id'] ?? null,
                 'status' => 'PENDING',
                 'phase' => 1,
-                'work_unit' => $remote->workUnit->name ?? null,
-                'bc_tid' => $remote->bc_tid ?? '-',
-                'name' => $remote->name,
-                'ip_lan' => $remote->ip_lan,
-                'ip_p2p_modem' => $remote->ip_p2p_modem,
-                'site_id' => $remote->site_id,
-                'supervision' => $remote->supervision,
                 'date' => $changeData['scheduled_date'] ?? now(),
-                'is_process_helpdesk' => false,
-                'is_process_admin' => false
             ]);
         }
 

@@ -4,6 +4,7 @@ namespace Ibinet\Services;
 
 use Ibinet\Models\ApprovalActivity;
 use Ibinet\Models\ApprovalFlowDetail;
+use Ibinet\Models\ExpenseReport;
 use Ibinet\Models\ExpenseReportBalance;
 use Ibinet\Models\ExpenseReportLocation;
 use Ibinet\Models\ExpenseReportRemote;
@@ -48,7 +49,8 @@ class ApprovalService{
 
             $projectId = $defineLocation['projectId'];
             $regionId = $defineLocation['regionId'];
-            
+            $homeBaseId = $defineLocation['homeBaseId'] ?? null;
+
             // Get first step in approval flow
             $firstStep = ApprovalFlowDetail::where('approval_flow_id', $approvalFlow)
                 ->orderBy('order')
@@ -80,7 +82,8 @@ class ApprovalService{
                 $nextStep->status,
                 $nextStep->role_id,
                 $projectId,
-                $regionId
+                $regionId,
+                $homeBaseId
             );
             
             if (!$nextAssignmentUser) {
@@ -106,7 +109,7 @@ class ApprovalService{
                 'role_id' => $data['role_id'],
                 'user_id' => $data['user_id'],
                 'note' => $data['note'],
-                'process_at' => $now,
+                'processed_at' => $now,
                 'order' => 0
             ]);
             
@@ -121,7 +124,7 @@ class ApprovalService{
                 'status' => 'PENDING',
                 'role_id' => $nextStep->role_id,
                 'user_id' => $nextAssignmentUser->id,
-                'process_at' => $now,
+                'processed_at' => $now,
                 'order' => 1
             ]);
             
@@ -172,6 +175,47 @@ class ApprovalService{
     }
     
     /**
+     * Compare an amount against a step's configured operator and threshold.
+     *
+     * The operator and threshold are operator-supplied strings from the approval
+     * flow form, so they are matched against a fixed set rather than executed.
+     * An unrecognised operator or non-numeric threshold never matches.
+     *
+     * @param  mixed  $entityAmount
+     * @param  string|null  $condition
+     * @param  string|null  $conditionValue
+     * @return bool
+     */
+    private static function compareAmount($entityAmount, $condition, $conditionValue)
+    {
+        if (!is_numeric($entityAmount) || !is_numeric($conditionValue)) {
+            return false;
+        }
+
+        $left = (float) $entityAmount;
+        $right = (float) $conditionValue;
+
+        switch (trim((string) $condition)) {
+            case '<':
+                return $left < $right;
+            case '<=':
+                return $left <= $right;
+            case '>':
+                return $left > $right;
+            case '>=':
+                return $left >= $right;
+            case '=':
+            case '==':
+                return $left == $right;
+            case '!=':
+            case '<>':
+                return $left != $right;
+            default:
+                return false;
+        }
+    }
+
+    /**
      * Determine which next step to use based on conditions
      */
     private static function determineNextStep($nextSteps, $refType, $entityAmount)
@@ -187,17 +231,8 @@ class ApprovalService{
                     continue;
                 }
                 
-                $condition = $step->condition;
-                $conditionValue = $step->condition_value;
-                
-                if ($step->condition_id == 'ER_AMOUNT_FUND_REQUEST' && $refType == self::REF_FUND_REQUEST) {
-                    if (eval("return \$entityAmount $condition $conditionValue;")) {
-                        return $step;
-                    }
-                } else {
-                    if (eval("return \$entityAmount $condition $conditionValue;")) {
-                        return $step;
-                    }
+                if (self::compareAmount($entityAmount, $step->condition, $step->condition_value)) {
+                    return $step;
                 }
             }
             
@@ -270,15 +305,18 @@ class ApprovalService{
 
                     $previousData = self::fetchReleatedData($refId, $refType);
                     
-                    // Record revision history
+                    // Record revision history. The table only carries ref_id,
+                    // ref_type and a json payload, so the actor and note travel
+                    // inside data rather than as columns of their own.
                     ApprovalRevisionHistory::create([
                         'ref_id' => $refId,
                         'ref_type' => $refType,
-                        'approval_activity_id' => $currentActivity->id,
-                        'user_id' => auth()->id(),
-                        'data' => $previousData,
-                        'note' => $data['note'],
-                        'created_at' => now()
+                        'data' => [
+                            'approval_activity_id' => $currentActivity->id,
+                            'user_id' => auth()->id(),
+                            'note' => $data['note'] ?? null,
+                            'previous' => $previousData,
+                        ],
                     ]);
                 }
             }
@@ -296,13 +334,13 @@ class ApprovalService{
             
             $projectId = $defineLocation['projectId'];
             $regionId = $defineLocation['regionId'];
+            $homeBaseId = $defineLocation['homeBaseId'] ?? null;
 
             // Update current activity status
             ApprovalActivity::find($currentActivity->id)->update([
-                'processed_at' => now(),
                 'status' => $approvalStatus,
                 'note' => $data['note'],
-                'process_at' => now()
+                'processed_at' => now()
             ]);
             
             // Handle based on approval status
@@ -313,7 +351,7 @@ class ApprovalService{
                 $result = self::handleRevision($refId, $refType, $currentActivity, $data, $approvalFlow, $projectId, $regionId);
             } else {
                 // For APPROVED or other statuses
-                $result = self::handleNextStep($refId, $refType, $currentActivity, $data, $entityData, $approvalFlow, $projectId, $regionId, $expenseReportAmount);
+                $result = self::handleNextStep($refId, $refType, $currentActivity, $data, $entityData, $approvalFlow, $projectId, $regionId, $expenseReportAmount, $homeBaseId);
             }
             
             // Check if handler returned success
@@ -381,7 +419,7 @@ class ApprovalService{
                 'user_id' => $currentActivity->user_id,
                 'note' => $data['note'],
                 'order' => $currentActivity->order + 1,
-                'process_at' => now()
+                'processed_at' => now()
             ]);
             
             return [
@@ -437,7 +475,7 @@ class ApprovalService{
                 'role_id' => $firstActivity->role_id,
                 'user_id' => $firstActivity->user_id,
                 'note' => "Revision requested: " . $data['note'],
-                'process_at' => now(),
+                'processed_at' => now(),
                 'order' => $currentActivity->order + 1
             ]);
             
@@ -536,20 +574,10 @@ class ApprovalService{
                     continue;
                 }
                 
-                $condition = $step->condition;
-                $conditionValue = $step->condition_value;
-                
                 // Re-evaluate the condition with the historical entity amount
-                if ($step->condition_id == 'ER_AMOUNT_FUND_REQUEST' && $refType == self::REF_FUND_REQUEST) {
-                    if (eval("return \$entityAmount $condition $conditionValue;")) {
-                        $selectedStep = $step;
-                        break;
-                    }
-                } else {
-                    if (eval("return \$entityAmount $condition $conditionValue;")) {
-                        $selectedStep = $step;
-                        break;
-                    }
+                if (self::compareAmount($entityAmount, $step->condition, $step->condition_value)) {
+                    $selectedStep = $step;
+                    break;
                 }
             }
             
@@ -593,9 +621,10 @@ class ApprovalService{
      * @param string $projectId Project ID
      * @param string $regionId Region ID
      * @param float $expenseReportAmount Amount for condition checking
+     * @param string|null $homeBaseId Home base ID
      * @return array Result of the next step process
      */
-    private static function handleNextStep($refId, $refType, $currentActivity, $data, $entityData, $approvalFlow, $projectId, $regionId, $expenseReportAmount)
+    private static function handleNextStep($refId, $refType, $currentActivity, $data, $entityData, $approvalFlow, $projectId, $regionId, $expenseReportAmount, $homeBaseId = null)
     {
         try {
             $currentStep = ApprovalFlowDetail::where('approval_flow_id', $currentActivity->approval_flow_id)
@@ -623,7 +652,7 @@ class ApprovalService{
                     'role_id' => $currentActivity->role_id,
                     'user_id' => $currentActivity->user_id,
                     'note' => "Approval completed with final note: " . $data['note'],
-                    'process_at' => now(),
+                    'processed_at' => now(),
                     'order' => $currentActivity->order + 1
                 ]);
                 
@@ -649,11 +678,8 @@ class ApprovalService{
                         continue;
                     }
                     
-                    $condition = $step->condition;
-                    $conditionValue = $step->condition_value;
-                    
                     // Evaluate the condition
-                    if (eval("return \$expenseReportAmount $condition $conditionValue;")) {
+                    if (self::compareAmount($expenseReportAmount, $step->condition, $step->condition_value)) {
                         $nextStep = $step;
                         break;
                     }
@@ -677,7 +703,8 @@ class ApprovalService{
                 $nextStep->status,
                 $nextStep->role_id,
                 $projectId,
-                $regionId
+                $regionId,
+                $homeBaseId
             );
             
             if (!$nextAssignmentUser) {
@@ -700,7 +727,7 @@ class ApprovalService{
                 'user_id' => $nextAssignmentUser->id,
                 'note' => null,
                 'order' => $currentActivity->order + 1,
-                'process_at' => now()
+                'processed_at' => now()
             ]);
             
             return [
@@ -781,7 +808,7 @@ class ApprovalService{
     /**
      * Fetch user by condition
      */
-    private static function fetchUserByCondition($status ,$roleId, $projectId = null, $regionId = null)
+    private static function fetchUserByCondition($status ,$roleId, $projectId = null, $regionId = null, $homeBaseId = null)
     {
          // Get all eligible users based on conditions
          $eligibleUsers = collect();
@@ -805,13 +832,14 @@ class ApprovalService{
                 ->where('is_active', true)
                 ->get();
         } else if ($status == self::SAME_HOMEBASE){
-            // $eligibleUsers = User::where('role_id', $roleId)
-            //     ->whereHas('homebase', function($query) use ($homebaseId) {
-            //         $query->where('homebases.id', $homebaseId);
-            //     })
-            //     ->where('is_active', true)
-            //     ->get();
-            $eligibleUsers = collect();
+            if ($homeBaseId) {
+                $eligibleUsers = User::where('role_id', $roleId)
+                    ->whereHas('homebase', function($query) use ($homeBaseId) {
+                        $query->where('home_bases.id', $homeBaseId);
+                    })
+                    ->where('is_active', true)
+                    ->get();
+            }
         }
 
         if ($eligibleUsers->isEmpty()) {
@@ -848,20 +876,61 @@ class ApprovalService{
     {
         if($locationType == 'REGION'){
             $expenseReportLocation = ExpenseReportLocation::find($locationId);
-            $projectId = $expenseReportLocation->project_id;
-            $regionId = $expenseReportLocation->region_id;
         } else if($locationType == 'REMOTE'){
             $expenseReportLocation = ExpenseReportRemote::find($locationId);
-            $projectId = $expenseReportLocation->project_id;
-            $regionId = $expenseReportLocation->remote->region_id;
         } else{
             return null;
         }
 
+        if (!$expenseReportLocation) {
+            return null;
+        }
+
+        $projectId = $expenseReportLocation->project_id;
+
+        // An expense record no longer has to name a remote, and a region-based
+        // record may not carry a region either, so fall back to the project's
+        // region the same way a fund request resolves it.
+        $regionId = $locationType == 'REMOTE'
+            ? $expenseReportLocation->remote?->region_id
+            : $expenseReportLocation->region_id;
+
+        if (!$regionId && $projectId) {
+            $regionId = Project::with('regions')->find($projectId)?->regions->first()?->id;
+        }
+
+        // Home base comes from the remote when there is one, otherwise from the
+        // person the expense report is assigned to.
+        $homeBaseId = $locationType == 'REMOTE'
+            ? $expenseReportLocation->remote?->home_base_id
+            : null;
+
+        if (!$homeBaseId) {
+            $homeBaseId = self::resolveHomeBaseByExpenseReport($expenseReportLocation->expense_report_id);
+        }
+
         return [
             'projectId' => $projectId,
-            'regionId' => $regionId
+            'regionId' => $regionId,
+            'homeBaseId' => $homeBaseId
         ];
+    }
+
+    /**
+     * Resolve the home base of the user an expense report is assigned to.
+     *
+     * @param  string|null  $expenseReportId
+     * @return string|null
+     */
+    private static function resolveHomeBaseByExpenseReport($expenseReportId)
+    {
+        if (!$expenseReportId) {
+            return null;
+        }
+
+        $expenseReport = ExpenseReport::with('assignmentTo.homebase')->find($expenseReportId);
+
+        return $expenseReport?->assignmentTo?->homebase->first()?->id;
     }
 
     /**
@@ -871,13 +940,14 @@ class ApprovalService{
     {
         $projectId = $expenseReportRequest->project_id;
         $project =  Project::with('regions')->find($projectId);
-        
+
         // Get the first region ID from the project's regions collection
-        $regionId = $project->regions->first()?->id;
-        
+        $regionId = $project?->regions->first()?->id;
+
         return [
             'projectId' => $projectId,
-            'regionId' => $regionId ?? null
+            'regionId' => $regionId ?? null,
+            'homeBaseId' => self::resolveHomeBaseByExpenseReport($expenseReportRequest->expense_report_id)
         ];
     }
 }

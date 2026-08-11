@@ -24,6 +24,19 @@ class Role extends Model
         'updated_at'
     ];
 
+    protected $casts = [
+        'is_project_manager' => 'boolean',
+        'is_technician' => 'boolean',
+    ];
+
+    /**
+     * Roles directly under this one.
+     */
+    public function children()
+    {
+        return $this->hasMany(Role::class, 'parent_id');
+    }
+
     public function permissions()
     {
         return $this->hasMany('Ibinet\Models\RolePermission');
@@ -54,12 +67,18 @@ class Role extends Model
 
             $nextLevel = [];
 
+            // One placeholder per id: a comma-joined string bound to a single
+            // placeholder is compared as one literal value and matches nothing.
+            $exclude = array_values(array_unique(array_merge($visited, [$this->id])));
+            $parentPlaceholders = implode(',', array_fill(0, count($currentLevel), '?'));
+            $excludePlaceholders = implode(',', array_fill(0, count($exclude), '?'));
+
             $children = DB::select("
                 SELECT id, parent_id, name
                 FROM roles
-                WHERE parent_id IN (?)
-                AND id NOT IN (?)
-            ", [implode(',', $currentLevel), implode(',', array_merge($visited, [$this->id]))]);
+                WHERE parent_id IN ({$parentPlaceholders})
+                AND id NOT IN ({$excludePlaceholders})
+            ", array_merge($currentLevel, $exclude));
 
             foreach ($children as $child) {
                 if (in_array($child->id, $visited, true)) {

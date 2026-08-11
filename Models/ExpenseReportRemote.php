@@ -102,4 +102,16 @@ class ExpenseReportRemote extends Model
     {
         return $this->hasOne('Ibinet\Models\RemoteHelpdesk', 'expense_report_id');
     }
+
+    /**
+     * Expense transactions filed against this record.
+     *
+     * ExpenseReportBalance points at either a location or a remote through the
+     * same location_id column, so the type has to be pinned here.
+     */
+    public function balances()
+    {
+        return $this->hasMany('Ibinet\Models\ExpenseReportBalance', 'location_id')
+            ->where('location_type', 'REMOTE');
+    }
 }

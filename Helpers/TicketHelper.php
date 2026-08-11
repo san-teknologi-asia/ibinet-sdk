@@ -73,9 +73,6 @@ class TicketHelper
                 'work_type_id' => $workType->id,
                 'schedule_id' => null,
                 'date' => now(),
-                'is_process_helpdesk' => false,
-                'is_process_admin' => false,
-                'helpdesk_status' => 'PENDING'
             ]);
 
             $checkTimer = TicketTimer::where('ticket_id', $ticket_id)
@@ -122,9 +119,6 @@ class TicketHelper
                     'work_type_id' => $workType->id,
                     'schedule_id' => null,
                     'date' => now(),
-                    'is_process_helpdesk' => false,
-                    'is_process_admin' => false,
-                    'helpdesk_status' => 'PENDING'
                 ]);
             }
         }

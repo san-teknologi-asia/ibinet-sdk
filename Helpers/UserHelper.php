@@ -60,15 +60,7 @@ class UserHelper
     {
         $modules = is_array($modules) ? $modules : [$modules];
 
-        if (in_array('OMC', $modules)) {
-            $rows = UserProject::where('user_id', $userId)
-                ->where('type', UserProject::TYPE_HELPDESK)
-                ->get();
-
-            $userProjects = $rows->map(function ($row) {
-                return $row->project_id;
-            })->filter()->unique()->values()->toArray();
-        } elseif (in_array('IFAS', $modules)) {
+        if (in_array('IFAS', $modules)) {
             $rows = UserProject::where('user_id', $userId)
                 ->where('type', UserProject::TYPE_FINANCE)
                 ->get();

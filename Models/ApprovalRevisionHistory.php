@@ -25,6 +25,10 @@ class ApprovalRevisionHistory extends Model
         'created_at', 'updated_at'
     ];
 
+    protected $casts = [
+        'data' => 'array',
+    ];
+
     /**
      *  Setup model event hooks
      */
