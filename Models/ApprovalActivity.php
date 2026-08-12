@@ -24,6 +24,14 @@ class ApprovalActivity extends Model
         'created_at', 'updated_at'
     ];
 
+    /**
+     * The step definition frozen at the moment this activity was created, so
+     * history stays readable after the flow moves to a newer version.
+     */
+    protected $casts = [
+        'step_snapshot' => 'array',
+    ];
+
     public function user()
     {
         return $this->belongsTo(User::class, 'user_id', 'id');

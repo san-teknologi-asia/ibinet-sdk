@@ -52,22 +52,18 @@ class ApprovalService{
             $homeBaseId = $defineLocation['homeBaseId'] ?? null;
 
             // Get first step in approval flow
-            $firstStep = ApprovalFlowDetail::where('approval_flow_id', $approvalFlow)
-                ->orderBy('order')
-                ->first();
-                
-            if (!$firstStep) {
+            $firstStageOrder = self::fetchFirstStageOrder($approvalFlow);
+
+            if ($firstStageOrder === null) {
                 return [
                     'success' => false,
                     'message' => 'Approval flow steps not found'
                 ];
             }
-            
+
             // Get next step(s) - could be multiple depending on conditions
-            $nextSteps = ApprovalFlowDetail::where('approval_flow_id', $approvalFlow)
-                ->where('order', $firstStep->order)
-                ->get();
-                
+            $nextSteps = self::fetchStageSteps($approvalFlow, $firstStageOrder);
+
             // Determine the appropriate next step based on conditions
             $nextStep = self::determineNextStep($nextSteps, $refType, $entityAmount);
             
@@ -113,12 +109,15 @@ class ApprovalService{
                 'order' => 0
             ]);
             
-            // Create first approval step activity
+            // Create first approval step activity. The flow id recorded here is
+            // the version the request runs on for its whole life, even if the
+            // active setting later moves to a newer version.
             ApprovalActivity::create([
                 'ref_id' => $refId,
                 'ref_type' => $refType,
                 'approval_flow_id' => $approvalFlow,
                 'approval_flow_detail_id' => $nextStep->id,
+                'step_snapshot' => self::buildStepSnapshot($nextStep),
                 'step' => $nextStep->order,
                 'step_name' => $nextStep->name,
                 'status' => 'PENDING',
@@ -213,6 +212,106 @@ class ApprovalService{
             default:
                 return false;
         }
+    }
+
+    /**
+     * Freeze a step definition so the activity row stays readable after the
+     * flow moves to a newer version.
+     *
+     * @param  \Ibinet\Models\ApprovalFlowDetail  $step
+     * @return array
+     */
+    private static function buildStepSnapshot($step)
+    {
+        return [
+            'approval_flow_detail_id' => $step->id,
+            'approval_flow_id' => $step->approval_flow_id,
+            'name' => $step->name,
+            'role_id' => $step->role_id,
+            'status' => $step->status,
+            'condition_id' => $step->condition_id,
+            'condition' => $step->condition,
+            'condition_value' => $step->condition_value,
+            'order' => (int) $step->order,
+        ];
+    }
+
+    /**
+     * Work out which stage the given activity sits at.
+     *
+     * Returns null when the activity is not a flow step at all — the initiator
+     * row and the revision bounce both carry no detail id, and both mean the
+     * request should enter the flow again from the first stage.
+     *
+     * @param  \Ibinet\Models\ApprovalActivity  $currentActivity
+     * @return int|null
+     */
+    private static function resolveCurrentStepOrder($currentActivity)
+    {
+        if (empty($currentActivity->approval_flow_detail_id)) {
+            return null;
+        }
+
+        // The snapshot is authoritative: it survives the flow being superseded,
+        // which a lookup against the master row does not.
+        $snapshot = $currentActivity->step_snapshot;
+
+        if (is_array($snapshot) && isset($snapshot['order'])) {
+            return (int) $snapshot['order'];
+        }
+
+        $step = ApprovalFlowDetail::where('approval_flow_id', $currentActivity->approval_flow_id)
+            ->where('id', $currentActivity->approval_flow_detail_id)
+            ->first();
+
+        if ($step) {
+            return (int) $step->order;
+        }
+
+        // Written before snapshots existed, and its detail row was destroyed by
+        // an in-place flow edit. `step` recorded the order at creation time, so
+        // the chain can still move forward rather than silently restarting at
+        // stage one and asking everyone to approve again.
+        return (int) $currentActivity->step;
+    }
+
+    /**
+     * The order of the first stage in a flow.
+     *
+     * Flows built through the form are renumbered from 1, but nothing in the
+     * schema guarantees it, and assuming 1 would quietly finish a request that
+     * re-enters the flow instead of restarting it.
+     *
+     * @param  string  $approvalFlowId
+     * @return int|null
+     */
+    private static function fetchFirstStageOrder($approvalFlowId)
+    {
+        $firstStep = ApprovalFlowDetail::where('approval_flow_id', $approvalFlowId)
+            ->orderBy('order')
+            ->first();
+
+        return $firstStep ? (int) $firstStep->order : null;
+    }
+
+    /**
+     * Load the steps that make up one stage of a flow.
+     *
+     * Ordered explicitly: alternatives are evaluated first-match-wins, so an
+     * unordered fetch would let the database decide which branch a request
+     * takes when more than one condition matches.
+     *
+     * @param  string  $approvalFlowId
+     * @param  int  $order
+     * @return \Illuminate\Database\Eloquent\Collection
+     */
+    private static function fetchStageSteps($approvalFlowId, $order)
+    {
+        return ApprovalFlowDetail::where('approval_flow_id', $approvalFlowId)
+            ->where('order', $order)
+            ->orderBy('created_at')
+            ->orderBy('id')
+            ->get();
     }
 
     /**
@@ -321,9 +420,12 @@ class ApprovalService{
                 }
             }
             
-            // Get reference data and location information
-            list($approvalFlow, $entityData, $expenseReportAmount, $defineLocation) = self::getReferenceData($refId, $refType);
-            
+            // Get reference data and location information. The flow the setting
+            // currently points at is deliberately discarded here: a running
+            // approval resolves its steps against the version recorded on its
+            // own activity rows, not against whatever is active right now.
+            list(, $entityData, $expenseReportAmount, $defineLocation) = self::getReferenceData($refId, $refType);
+
             if ($defineLocation == null) {
                 DB::rollBack();
                 return [
@@ -346,12 +448,12 @@ class ApprovalService{
             // Handle based on approval status
             $result = null;
             if ($approvalStatus == 'REJECTED') {
-                $result = self::handleRejection($refId, $refType, $currentActivity, $data, $entityData, $approvalFlow);
+                $result = self::handleRejection($refId, $refType, $currentActivity, $data, $entityData);
             } else if ($approvalStatus == 'REVISION') {
-                $result = self::handleRevision($refId, $refType, $currentActivity, $data, $approvalFlow, $projectId, $regionId);
+                $result = self::handleRevision($refId, $refType, $currentActivity, $data);
             } else {
                 // For APPROVED or other statuses
-                $result = self::handleNextStep($refId, $refType, $currentActivity, $data, $entityData, $approvalFlow, $projectId, $regionId, $expenseReportAmount, $homeBaseId);
+                $result = self::handleNextStep($refId, $refType, $currentActivity, $data, $entityData, $projectId, $regionId, $expenseReportAmount, $homeBaseId);
             }
             
             // Check if handler returned success
@@ -389,10 +491,9 @@ class ApprovalService{
      * @param object $currentActivity Current approval activity
      * @param array $data Approval data
      * @param object $entityData Entity data (expense report or fund request)
-     * @param string $approvalFlow Approval flow ID
      * @return array Result of the rejection process
      */
-    private static function handleRejection($refId, $refType, $currentActivity, $data, $entityData, $approvalFlow)
+    private static function handleRejection($refId, $refType, $currentActivity, $data, $entityData)
     {
         try {
             // Validate current activity user exists
@@ -410,7 +511,7 @@ class ApprovalService{
             ApprovalActivity::create([
                 'ref_id' => $refId,
                 'ref_type' => $refType,
-                'approval_flow_id' => $approvalFlow,
+                'approval_flow_id' => $currentActivity->approval_flow_id,
                 'approval_flow_detail_id' => null,
                 'step' => $currentActivity->step + 1,
                 'step_name' => "Approval Finished With Rejected By " . $currentActivity->user->name,
@@ -442,12 +543,9 @@ class ApprovalService{
      * @param string $refType Reference type
      * @param object $currentActivity Current approval activity
      * @param array $data Approval data
-     * @param string $approvalFlow Approval flow ID
-     * @param string $projectId Project ID
-     * @param string $regionId Region ID
      * @return array Result of the revision process
      */
-    private static function handleRevision($refId, $refType, $currentActivity, $data, $approvalFlow, $projectId, $regionId)
+    private static function handleRevision($refId, $refType, $currentActivity, $data)
     {
         try {
             // Always return to the first step (initiator) when revision is requested
@@ -467,7 +565,7 @@ class ApprovalService{
             ApprovalActivity::create([
                 'ref_id' => $refId,
                 'ref_type' => $refType,
-                'approval_flow_id' => $approvalFlow,
+                'approval_flow_id' => $currentActivity->approval_flow_id,
                 'approval_flow_detail_id' => null,
                 'step' => 0,
                 'step_name' => "Revision Requested",
@@ -617,34 +715,47 @@ class ApprovalService{
      * @param object $currentActivity Current approval activity
      * @param array $data Approval data
      * @param object $entityData Entity data
-     * @param string $approvalFlow Approval flow ID
      * @param string $projectId Project ID
      * @param string $regionId Region ID
      * @param float $expenseReportAmount Amount for condition checking
      * @param string|null $homeBaseId Home base ID
      * @return array Result of the next step process
      */
-    private static function handleNextStep($refId, $refType, $currentActivity, $data, $entityData, $approvalFlow, $projectId, $regionId, $expenseReportAmount, $homeBaseId = null)
+    private static function handleNextStep($refId, $refType, $currentActivity, $data, $entityData, $projectId, $regionId, $expenseReportAmount, $homeBaseId = null)
     {
         try {
-            $currentStep = ApprovalFlowDetail::where('approval_flow_id', $currentActivity->approval_flow_id)
-                ->where('id', $currentActivity->approval_flow_detail_id)
-                ->first();
-                
-            $nextStepOrder = $currentStep ? $currentStep->order + 1 : 1;
-            
+            // A running approval stays on the flow version it started on. The
+            // active setting may already point at a newer version, but adopting
+            // it mid-chain would splice two definitions into one request.
+            $runningFlow = $currentActivity->approval_flow_id;
+
+            $currentStepOrder = self::resolveCurrentStepOrder($currentActivity);
+
+            // A null order means the activity is the initiator row or a revision
+            // bounce, so the request enters the flow again at the first stage.
+            if ($currentStepOrder === null) {
+                $nextStepOrder = self::fetchFirstStageOrder($runningFlow);
+
+                if ($nextStepOrder === null) {
+                    return [
+                        'success' => false,
+                        'message' => 'Approval flow steps not found'
+                    ];
+                }
+            } else {
+                $nextStepOrder = $currentStepOrder + 1;
+            }
+
             // Get next steps based on the order
-            $nextSteps = ApprovalFlowDetail::where('approval_flow_id', $currentActivity->approval_flow_id)
-                ->where('order', $nextStepOrder)
-                ->get();
-                
+            $nextSteps = self::fetchStageSteps($runningFlow, $nextStepOrder);
+
             // Check if we have next steps
             if ($nextSteps->isEmpty()) {
                 // This is the last step, mark as completed
                 ApprovalActivity::create([
                     'ref_id' => $refId,
                     'ref_type' => $refType,
-                    'approval_flow_id' => $approvalFlow,
+                    'approval_flow_id' => $runningFlow,
                     'approval_flow_detail_id' => null,
                     'step' => $nextStepOrder,
                     'step_name' => "Approval Completed",
@@ -665,32 +776,10 @@ class ApprovalService{
                 ];
             }
             
-            // Determine the next step based on conditions
-            $nextStep = null;
-            
-            if ($nextSteps->count() == 1) {
-                $nextStep = $nextSteps->first();
-            } else {
-                // Evaluate conditions to find the appropriate next step
-                foreach ($nextSteps as $step) {
-                    // Skip steps without conditions
-                    if (empty($step->condition) || empty($step->condition_value)) {
-                        continue;
-                    }
-                    
-                    // Evaluate the condition
-                    if (self::compareAmount($expenseReportAmount, $step->condition, $step->condition_value)) {
-                        $nextStep = $step;
-                        break;
-                    }
-                }
-                
-                // If no condition matched, take the first step (fallback)
-                if (!$nextStep && $nextSteps->isNotEmpty()) {
-                    $nextStep = $nextSteps->first();
-                }
-            }
-            
+            // Determine the next step based on conditions. Shared with initStep
+            // so the first stage and every later stage branch the same way.
+            $nextStep = self::determineNextStep($nextSteps, $refType, $expenseReportAmount);
+
             if (!$nextStep) {
                 return [
                     'success' => false,
@@ -718,8 +807,9 @@ class ApprovalService{
             ApprovalActivity::create([
                 'ref_id' => $refId,
                 'ref_type' => $refType,
-                'approval_flow_id' => $approvalFlow,
+                'approval_flow_id' => $runningFlow,
                 'approval_flow_detail_id' => $nextStep->id,
+                'step_snapshot' => self::buildStepSnapshot($nextStep),
                 'step' => $nextStep->order,
                 'step_name' => $nextStep->name,
                 'status' => 'PENDING',
