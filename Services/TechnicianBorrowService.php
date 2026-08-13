@@ -11,6 +11,7 @@ use Ibinet\Models\ExpenseReportRemote;
 use Ibinet\Models\UserProject;
 use Ibinet\Helpers\TechnicianBorrowHelper;
 use Ibinet\Helpers\ExpenseReportHelper;
+use Ibinet\Helpers\NotificationHelper;
 use DB;
 
 class TechnicianBorrowService
@@ -82,7 +83,13 @@ class TechnicianBorrowService
 
             DB::commit();
 
-            // TODO: Send notification to lender PM
+            $technicianName = $borrow->technician->name ?? 'a technician';
+            self::notify(
+                $borrow->lender_pm_id,
+                'Technician borrow request needs your approval',
+                "{$borrow->borrow_code}: request to borrow {$technicianName}.",
+                $borrow->id
+            );
 
             return [
                 'success' => true,
@@ -179,10 +186,16 @@ class TechnicianBorrowService
             // Handle rejection
             if ($action == 'REJECTED') {
                 $borrow->update(['status' => 'REJECTED']);
-                
+
                 DB::commit();
-                // TODO: Send rejection notification
-                
+
+                self::notify(
+                    $borrow->borrower_pm_id,
+                    'Borrow request rejected',
+                    "{$borrow->borrow_code} was rejected by the lending project manager.",
+                    $borrow->id
+                );
+
                 return [
                     'success' => true,
                     'message' => 'Borrow request rejected'
@@ -208,8 +221,14 @@ class TechnicianBorrowService
                 self::assignTechnicianToProject($borrow->technician_id, $borrow->borrower_project_id);
 
                 DB::commit();
-                // TODO: Send approval notification to all parties
-                
+
+                self::notify(
+                    [$borrow->borrower_pm_id, $borrow->technician_id],
+                    'Borrow request approved',
+                    "{$borrow->borrow_code} was approved. An expense report has been opened.",
+                    $borrow->id
+                );
+
                 return [
                     'success' => true,
                     'message' => 'Borrow request approved. Expense report created.',
@@ -261,13 +280,15 @@ class TechnicianBorrowService
             // Create one expense record per borrowed remote. A borrow does not
             // have to name any remote, in which case the report simply carries
             // no expense records until the technician files transactions.
+            // ONGOING is what the mobile dashboard lists as active work; the
+            // schedule pick-up path relies on the same column default.
             foreach ($borrow->remotes as $borrowRemote) {
                 ExpenseReportRemote::create([
                     'expense_report_id' => $expenseReport->id,
                     'remote_id' => $borrowRemote->remote_id,
                     'project_id' => $borrow->borrower_project_id,
                     'work_type_id' => $borrowRemote->work_type_id,
-                    'status' => 'PENDING',
+                    'status' => 'ONGOING',
                     'phase' => 1,
                     'date' => $borrowRemote->scheduled_date ?? $borrow->start_date,
                 ]);
@@ -324,6 +345,35 @@ class TechnicianBorrowService
     }
 
     /**
+     * Notify one or more users about a borrowing event.
+     *
+     * Always call this after the transaction commits: the state change has
+     * already happened, so a push failure must not surface as a failed
+     * approval or roll anything back.
+     *
+     * @param array $user_ids
+     * @param string $title
+     * @param string $body
+     * @param string $borrow_id
+     * @return void
+     */
+    private static function notify($user_ids, $title, $body, $borrow_id)
+    {
+        $recipients = array_unique(array_filter((array) $user_ids));
+
+        foreach ($recipients as $userId) {
+            try {
+                NotificationHelper::send($title, $body, [
+                    'user_id'              => $userId,
+                    'technician_borrow_id' => $borrow_id,
+                ]);
+            } catch (\Exception $e) {
+                \Log::error("Borrow notification failed for user {$userId}: {$e->getMessage()}");
+            }
+        }
+    }
+
+    /**
      * Request contract change (add/remove remote)
      *
      * @param string $borrow_id
@@ -369,7 +419,13 @@ class TechnicianBorrowService
             ]);
 
             DB::commit();
-            // TODO: Send notification to approvers
+
+            self::notify(
+                $borrow->lender_pm_id,
+                'Borrow contract change needs your approval',
+                "{$borrow->borrow_code}: " . str_replace('_', ' ', strtolower($change_type)) . ' requested.',
+                $borrow->id
+            );
 
             return [
                 'success' => true,
@@ -432,10 +488,16 @@ class TechnicianBorrowService
                     'status' => 'REJECTED',
                     'rejection_reason' => $note
                 ]);
-                
+
                 DB::commit();
-                // TODO: Send rejection notification
-                
+
+                self::notify(
+                    $contractChange->requested_by,
+                    'Contract change rejected',
+                    'Your borrow contract change request was rejected.',
+                    $contractChange->technician_borrow_id
+                );
+
                 return ['success' => true, 'message' => 'Contract change rejected'];
             }
 
@@ -450,10 +512,17 @@ class TechnicianBorrowService
                 }
 
                 $contractChange->update(['status' => 'APPROVED']);
-                
+
                 DB::commit();
-                // TODO: Send approval notification
-                
+
+                $borrow = $contractChange->technicianBorrow;
+                self::notify(
+                    [$contractChange->requested_by, $borrow->technician_id ?? null],
+                    'Contract change approved',
+                    'A borrow contract change was approved and applied.',
+                    $contractChange->technician_borrow_id
+                );
+
                 return [
                     'success' => true,
                     'message' => 'Contract change approved and applied'
@@ -536,7 +605,7 @@ class TechnicianBorrowService
                 'remote_id' => $changeData['remote_id'] ?? null,
                 'project_id' => $borrow->borrower_project_id,
                 'work_type_id' => $changeData['work_type_id'] ?? null,
-                'status' => 'PENDING',
+                'status' => 'ONGOING',
                 'phase' => 1,
                 'date' => $changeData['scheduled_date'] ?? now(),
             ]);
@@ -648,7 +717,13 @@ class TechnicianBorrowService
             self::removeTechnicianFromProject($borrow->technician_id, $borrow->borrower_project_id);
 
             DB::commit();
-            // TODO: Send completion notification
+
+            self::notify(
+                [$borrow->borrower_pm_id, $borrow->lender_pm_id, $borrow->technician_id],
+                'Borrowing completed',
+                "{$borrow->borrow_code} has been completed.",
+                $borrow->id
+            );
 
             return [
                 'success' => true,
@@ -710,7 +785,13 @@ class TechnicianBorrowService
             self::removeTechnicianFromProject($borrow->technician_id, $borrow->borrower_project_id);
 
             DB::commit();
-            // TODO: Send cancellation notification
+
+            self::notify(
+                [$borrow->borrower_pm_id, $borrow->lender_pm_id, $borrow->technician_id],
+                'Borrowing cancelled',
+                "{$borrow->borrow_code} was cancelled: " . ($reason ?? 'no reason given') . '.',
+                $borrow->id
+            );
 
             return [
                 'success' => true,
@@ -753,7 +834,13 @@ class TechnicianBorrowService
             $borrow->update(['status' => 'IN_PROGRESS']);
 
             DB::commit();
-            // TODO: Send start notification
+
+            self::notify(
+                $borrow->technician_id,
+                'Borrowing started',
+                "{$borrow->borrow_code} is now active.",
+                $borrow->id
+            );
 
             return [
                 'success' => true,
@@ -873,9 +960,16 @@ class TechnicianBorrowService
                 
                 // Ensure technician is assigned
                 self::assignTechnicianToProject($borrow->technician_id, $borrow->borrower_project_id);
-                
+
                 DB::commit();
                 $count++;
+
+                self::notify(
+                    $borrow->technician_id,
+                    'Borrowing started',
+                    "{$borrow->borrow_code} is now active.",
+                    $borrow->id
+                );
             } catch (\Exception $e) {
                 DB::rollBack();
                 \Log::error("Error starting borrow {$borrow->borrow_code}: {$e->getMessage()}");
