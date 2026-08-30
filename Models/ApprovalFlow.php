@@ -36,6 +36,8 @@ class ApprovalFlow extends Model
     protected $casts = [
         'version' => 'integer',
         'is_latest' => 'boolean',
+        'revision_material_fields' => 'array',
+        'max_revisions' => 'integer',
     ];
 
     public function items()

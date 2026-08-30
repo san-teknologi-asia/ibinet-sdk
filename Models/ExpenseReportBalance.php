@@ -92,6 +92,12 @@ class ExpenseReportBalance extends Model
         return null;
     }
 
+    public function images()
+    {
+        return $this->hasMany('Ibinet\Models\ExpenseReportBalanceImage', 'expense_report_balance_id')
+            ->orderBy('sort_order', 'asc');
+    }
+
     public function latestApprovalActivity()
     {
         return $this->hasOne(ApprovalActivity::class, 'ref_id', 'id')

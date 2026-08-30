@@ -3,6 +3,7 @@
 namespace Ibinet\Services;
 
 use Ibinet\Models\ApprovalActivity;
+use Ibinet\Models\ApprovalFlow;
 use Ibinet\Models\ApprovalFlowDetail;
 use Ibinet\Models\ExpenseReport;
 use Ibinet\Models\ExpenseReportBalance;
@@ -12,6 +13,7 @@ use Ibinet\Models\ExpenseReportRequest;
 use Ibinet\Models\ApprovalRevisionHistory;
 use Ibinet\Models\User;
 use DB;
+use Ibinet\Helpers\PeriodHelper;
 use Ibinet\Models\Project;
 
 class ApprovalService{
@@ -50,6 +52,7 @@ class ApprovalService{
             $projectId = $defineLocation['projectId'];
             $regionId = $defineLocation['regionId'];
             $homeBaseId = $defineLocation['homeBaseId'] ?? null;
+            $technicianUserId = $defineLocation['technicianUserId'] ?? null;
 
             // Get first step in approval flow
             $firstStageOrder = self::fetchFirstStageOrder($approvalFlow);
@@ -79,7 +82,9 @@ class ApprovalService{
                 $nextStep->role_id,
                 $projectId,
                 $regionId,
-                $homeBaseId
+                $homeBaseId,
+                $refType,
+                $technicianUserId
             );
             
             if (!$nextAssignmentUser) {
@@ -387,37 +392,47 @@ class ApprovalService{
                 ];
             }
             
-            if ($currentActivity->step - 1 == 1){
-                // Validate if revision is allowed
-                if ($approvalStatus == 'REVISION') {
+            // Revision bookkeeping runs for whichever step raised it. This used
+            // to be wrapped in `if ($currentActivity->step - 1 == 1)`, i.e. only
+            // when the reviser happened to sit at step 2, so in a
+            // technician -> spv -> pm -> finance flow a revision from finance
+            // recorded nothing at all and resubmission had no "before" to
+            // compare against.
+            if ($approvalStatus == 'REVISION') {
+                $limit = self::maxRevisionsFor($currentActivity->approval_flow_id);
+
+                if ($limit !== null) {
                     $revisionCount = ApprovalRevisionHistory::where('ref_id', $refId)
                         ->where('ref_type', $refType)
                         ->count();
-                        
-                    if ($revisionCount > 0) {
+
+                    if ($revisionCount >= $limit) {
                         DB::rollBack();
                         return [
                             'success' => false,
-                            'message' => 'This request has already been revised'
+                            'message' => "This request has already been revised {$revisionCount} time(s), which is the limit for this approval flow"
                         ];
                     }
-
-                    $previousData = self::fetchReleatedData($refId, $refType);
-                    
-                    // Record revision history. The table only carries ref_id,
-                    // ref_type and a json payload, so the actor and note travel
-                    // inside data rather than as columns of their own.
-                    ApprovalRevisionHistory::create([
-                        'ref_id' => $refId,
-                        'ref_type' => $refType,
-                        'data' => [
-                            'approval_activity_id' => $currentActivity->id,
-                            'user_id' => auth()->id(),
-                            'note' => $data['note'] ?? null,
-                            'previous' => $previousData,
-                        ],
-                    ]);
                 }
+
+                $previousData = self::fetchReleatedData($refId, $refType);
+
+                // Snapshot taken before the submitter edits anything, so the
+                // resubmission can tell whether a material field moved.
+                ApprovalRevisionHistory::create([
+                    'ref_id' => $refId,
+                    'ref_type' => $refType,
+                    'requested_activity_id' => $currentActivity->id,
+                    'requested_step' => $currentActivity->step,
+                    'requested_user_id' => $currentActivity->user_id,
+                    'data' => [
+                        'approval_activity_id' => $currentActivity->id,
+                        'user_id' => auth()->id(),
+                        'note' => $data['note'] ?? null,
+                        'previous' => $previousData ? $previousData->toArray() : null,
+                        'approval_flow_detail_id' => $currentActivity->approval_flow_detail_id,
+                    ],
+                ]);
             }
             
             // Get reference data and location information. The flow the setting
@@ -437,6 +452,7 @@ class ApprovalService{
             $projectId = $defineLocation['projectId'];
             $regionId = $defineLocation['regionId'];
             $homeBaseId = $defineLocation['homeBaseId'] ?? null;
+            $technicianUserId = $defineLocation['technicianUserId'] ?? null;
 
             // Update current activity status
             ApprovalActivity::find($currentActivity->id)->update([
@@ -453,7 +469,7 @@ class ApprovalService{
                 $result = self::handleRevision($refId, $refType, $currentActivity, $data);
             } else {
                 // For APPROVED or other statuses
-                $result = self::handleNextStep($refId, $refType, $currentActivity, $data, $entityData, $projectId, $regionId, $expenseReportAmount, $homeBaseId);
+                $result = self::handleNextStep($refId, $refType, $currentActivity, $data, $entityData, $projectId, $regionId, $expenseReportAmount, $homeBaseId, $technicianUserId);
             }
             
             // Check if handler returned success
@@ -719,9 +735,10 @@ class ApprovalService{
      * @param string $regionId Region ID
      * @param float $expenseReportAmount Amount for condition checking
      * @param string|null $homeBaseId Home base ID
+     * @param string|null $technicianUserId Technician the reference belongs to
      * @return array Result of the next step process
      */
-    private static function handleNextStep($refId, $refType, $currentActivity, $data, $entityData, $projectId, $regionId, $expenseReportAmount, $homeBaseId = null)
+    private static function handleNextStep($refId, $refType, $currentActivity, $data, $entityData, $projectId, $regionId, $expenseReportAmount, $homeBaseId = null, $technicianUserId = null)
     {
         try {
             // A running approval stays on the flow version it started on. The
@@ -732,8 +749,33 @@ class ApprovalService{
             $currentStepOrder = self::resolveCurrentStepOrder($currentActivity);
 
             // A null order means the activity is the initiator row or a revision
-            // bounce, so the request enters the flow again at the first stage.
+            // bounce, so the request enters the flow again at the first stage --
+            // unless it is a resubmission where nothing material changed, in
+            // which case it goes straight back to the step that asked for it.
             if ($currentStepOrder === null) {
+                $resubmission = self::resolveResubmissionTarget($refId, $refType, $runningFlow, $entityData);
+
+                if ($resubmission['fast_return']) {
+                    return self::applyFastReturn(
+                        $refId,
+                        $refType,
+                        $currentActivity,
+                        $data,
+                        $resubmission,
+                        $projectId,
+                        $regionId,
+                        $homeBaseId,
+                        $technicianUserId
+                    );
+                }
+
+                if ($resubmission['revision']) {
+                    $resubmission['revision']->update([
+                        'resolved_at' => now(),
+                        'resolution' => 'RESTART',
+                    ]);
+                }
+
                 $nextStepOrder = self::fetchFirstStageOrder($runningFlow);
 
                 if ($nextStepOrder === null) {
@@ -793,7 +835,9 @@ class ApprovalService{
                 $nextStep->role_id,
                 $projectId,
                 $regionId,
-                $homeBaseId
+                $homeBaseId,
+                $refType,
+                $technicianUserId
             );
             
             if (!$nextAssignmentUser) {
@@ -840,8 +884,395 @@ class ApprovalService{
     }
 
     /**
+     * How many revisions a flow tolerates. Null means unlimited.
+     *
+     * @param  string  $approvalFlowId
+     * @return int|null
+     */
+    private static function maxRevisionsFor($approvalFlowId)
+    {
+        $flow = ApprovalFlow::find($approvalFlowId);
+
+        return $flow ? $flow->max_revisions : null;
+    }
+
+    /**
+     * The revision this request still owes a correction for, if any.
+     *
+     * @param  string  $refId
+     * @param  string  $refType
+     * @return \Ibinet\Models\ApprovalRevisionHistory|null
+     */
+    private static function openRevisionFor($refId, $refType)
+    {
+        return ApprovalRevisionHistory::where('ref_id', $refId)
+            ->where('ref_type', $refType)
+            ->whereNull('resolved_at')
+            ->orderBy('created_at', 'desc')
+            ->first();
+    }
+
+    /**
+     * The column carrying the money for a reference type. Always material:
+     * approval_flow_details branch on it, so a new amount can imply a
+     * different set of approvers.
+     *
+     * @param  string  $refType
+     * @return string
+     */
+    private static function amountFieldFor($refType)
+    {
+        return $refType == self::REF_EXPENSE ? 'credit' : 'amount';
+    }
+
+    /**
+     * Fields that force a full replay when the flow has not configured its own.
+     * These are the ones an approver actually signed off on, so a change to any
+     * of them means the earlier approvals no longer describe what is being paid.
+     *
+     * @param  string  $refType
+     * @return array<int, string>
+     */
+    private static function defaultMaterialFields($refType)
+    {
+        if ($refType == self::REF_EXPENSE) {
+            return ['expense_category_id', 'location_type', 'location_id'];
+        }
+
+        return [];
+    }
+
+    /**
+     * Material fields for a running flow: the amount, plus whatever the flow
+     * configured, falling back to the per-ref-type defaults.
+     *
+     * @param  string  $approvalFlowId
+     * @param  string  $refType
+     * @return array<int, string>
+     */
+    private static function materialFieldsFor($approvalFlowId, $refType)
+    {
+        $fields = [self::amountFieldFor($refType)];
+
+        $flow = ApprovalFlow::find($approvalFlowId);
+        $configured = $flow ? $flow->revision_material_fields : null;
+
+        if (is_string($configured)) {
+            $configured = json_decode($configured, true);
+        }
+
+        $fields = array_merge(
+            $fields,
+            is_array($configured) && !empty($configured)
+                ? $configured
+                : self::defaultMaterialFields($refType)
+        );
+
+        return array_values(array_unique(array_filter($fields)));
+    }
+
+    /**
+     * Decode the revision payload.
+     *
+     * Two writers disagree on shape: this service stores a real array into a
+     * json-cast column, while ier's fund-request controller json_encodes first,
+     * which lands as a string inside the cast. Both have to be readable.
+     *
+     * @param  \Ibinet\Models\ApprovalRevisionHistory  $revision
+     * @return array
+     */
+    private static function revisionPayload($revision)
+    {
+        $payload = $revision->data;
+
+        if (is_string($payload)) {
+            $payload = json_decode($payload, true);
+        }
+
+        return is_array($payload) ? $payload : [];
+    }
+
+    /**
+     * The entity as it stood when the revision was raised.
+     *
+     * @param  \Ibinet\Models\ApprovalRevisionHistory  $revision
+     * @return array
+     */
+    private static function revisionSnapshot($revision)
+    {
+        $payload = self::revisionPayload($revision);
+
+        // The fund-request controller stores the entity at the top level rather
+        // than under a 'previous' key.
+        $snapshot = $payload['previous'] ?? $payload;
+
+        if (is_string($snapshot)) {
+            $snapshot = json_decode($snapshot, true);
+        }
+
+        return is_array($snapshot) ? $snapshot : [];
+    }
+
+    /**
+     * Whether two stored values represent a real change.
+     *
+     * Money arrives as a digit string once the thousands separators are
+     * stripped, so '1000' and '1000.00' are the same amount and must not read
+     * as an edit.
+     *
+     * @param  mixed  $before
+     * @param  mixed  $after
+     * @return bool
+     */
+    private static function valuesDiffer($before, $after)
+    {
+        if ($before === null || $after === null) {
+            return $before !== $after;
+        }
+
+        if (is_numeric($before) && is_numeric($after)) {
+            return abs((float) $before - (float) $after) > 0.00001;
+        }
+
+        return (string) $before !== (string) $after;
+    }
+
+    /**
+     * Decide how a resubmitted request re-enters the chain.
+     *
+     * Returning to the requester is only safe when nothing an approver relied
+     * on has moved. The amount is always checked because steps branch on it --
+     * a changed amount can select a different approver entirely, so replaying
+     * the flow is a correctness requirement, not a preference.
+     *
+     * @param  string  $refId
+     * @param  string  $refType
+     * @param  string  $runningFlow
+     * @param  object  $entityData
+     * @return array
+     */
+    private static function resolveResubmissionTarget($refId, $refType, $runningFlow, $entityData)
+    {
+        $result = [
+            'revision' => null,
+            'fast_return' => false,
+            'target_step' => null,
+            'changed_fields' => [],
+            'reason' => 'NO_OPEN_REVISION',
+        ];
+
+        $revision = self::openRevisionFor($refId, $refType);
+
+        if (!$revision) {
+            return $result;
+        }
+
+        $result['revision'] = $revision;
+        $snapshot = self::revisionSnapshot($revision);
+
+        if (empty($snapshot)) {
+            // Nothing to compare against, so replay rather than guess.
+            $result['reason'] = 'NO_SNAPSHOT';
+            return $result;
+        }
+
+        foreach (self::materialFieldsFor($runningFlow, $refType) as $field) {
+            if (!array_key_exists($field, $snapshot)) {
+                continue;
+            }
+
+            if (self::valuesDiffer($snapshot[$field], $entityData->{$field} ?? null)) {
+                $result['changed_fields'][] = $field;
+            }
+        }
+
+        if (!empty($result['changed_fields'])) {
+            $result['reason'] = 'MATERIAL_CHANGE';
+            return $result;
+        }
+
+        $targetStep = self::resolveRevisionOriginStep($revision);
+
+        if (!$targetStep) {
+            $result['reason'] = 'ORIGIN_STEP_UNKNOWN';
+            return $result;
+        }
+
+        // Splicing in a step from a different flow version would mix two
+        // definitions into one request.
+        if ($targetStep->approval_flow_id !== $runningFlow) {
+            $result['reason'] = 'ORIGIN_STEP_FOREIGN';
+            return $result;
+        }
+
+        $firstOrder = self::fetchFirstStageOrder($runningFlow);
+
+        // A step may insist on seeing every resubmission. If one of the stages
+        // being bypassed says so, the shortcut is off.
+        if ($firstOrder !== null) {
+            $optedOut = ApprovalFlowDetail::where('approval_flow_id', $runningFlow)
+                ->where('order', '>=', $firstOrder)
+                ->where('order', '<', $targetStep->order)
+                ->where('allow_fast_return', false)
+                ->exists();
+
+            if ($optedOut) {
+                $result['reason'] = 'STEP_REQUIRES_REAPPROVAL';
+                return $result;
+            }
+        }
+
+        $result['fast_return'] = true;
+        $result['target_step'] = $targetStep;
+        $result['reason'] = 'NO_MATERIAL_CHANGE';
+
+        return $result;
+    }
+
+    /**
+     * The flow step that raised a revision.
+     *
+     * @param  \Ibinet\Models\ApprovalRevisionHistory  $revision
+     * @return \Ibinet\Models\ApprovalFlowDetail|null
+     */
+    private static function resolveRevisionOriginStep($revision)
+    {
+        $payload = self::revisionPayload($revision);
+        $detailId = $payload['approval_flow_detail_id'] ?? null;
+
+        if ($detailId) {
+            $step = ApprovalFlowDetail::find($detailId);
+
+            if ($step) {
+                return $step;
+            }
+        }
+
+        // Rows written before the requester columns existed, or by the
+        // fund-request controller, only leave the activity to trace back from.
+        if ($revision->requested_activity_id) {
+            $originActivity = ApprovalActivity::find($revision->requested_activity_id);
+
+            if ($originActivity && $originActivity->approval_flow_detail_id) {
+                return ApprovalFlowDetail::find($originActivity->approval_flow_detail_id);
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Send a resubmitted request straight back to the step that asked for it.
+     *
+     * @return array
+     */
+    private static function applyFastReturn($refId, $refType, $currentActivity, $data, $resubmission, $projectId, $regionId, $homeBaseId, $technicianUserId)
+    {
+        $targetStep = $resubmission['target_step'];
+        $revision = $resubmission['revision'];
+        $runningFlow = $currentActivity->approval_flow_id;
+        $order = $currentActivity->order;
+
+        // Mark every bypassed stage rather than jumping silently: the activity
+        // chain is the audit trail, and a gap in it reads as if those approvals
+        // never happened.
+        $firstOrder = self::fetchFirstStageOrder($runningFlow);
+
+        if ($firstOrder !== null) {
+            for ($stepOrder = $firstOrder; $stepOrder < $targetStep->order; $stepOrder++) {
+                $previous = ApprovalActivity::where('ref_id', $refId)
+                    ->where('ref_type', $refType)
+                    ->where('step', $stepOrder)
+                    ->orderBy('order', 'desc')
+                    ->first();
+
+                if (!$previous) {
+                    continue;
+                }
+
+                $order++;
+
+                ApprovalActivity::create([
+                    'ref_id' => $refId,
+                    'ref_type' => $refType,
+                    'approval_flow_id' => $runningFlow,
+                    'approval_flow_detail_id' => $previous->approval_flow_detail_id,
+                    'step_snapshot' => $previous->step_snapshot,
+                    'step' => $stepOrder,
+                    'step_name' => $previous->step_name,
+                    'status' => 'SKIPPED',
+                    'role_id' => $previous->role_id,
+                    'user_id' => $previous->user_id,
+                    'note' => 'Auto-skipped on resubmission: nothing material changed since this approval',
+                    'processed_at' => now(),
+                    'order' => $order,
+                ]);
+            }
+        }
+
+        // Prefer the person who asked for the change; they already hold the
+        // context. Only fall back to normal assignment if they cannot act.
+        $assignee = null;
+
+        if ($revision && $revision->requested_user_id) {
+            $assignee = User::where('id', $revision->requested_user_id)
+                ->where('is_active', true)
+                ->first();
+        }
+
+        if (!$assignee) {
+            $assignee = self::fetchUserByCondition(
+                $targetStep->status,
+                $targetStep->role_id,
+                $projectId,
+                $regionId,
+                $homeBaseId,
+                $refType,
+                $technicianUserId
+            );
+        }
+
+        if (!$assignee) {
+            return [
+                'success' => false,
+                'message' => "No user available to review the revision, Step Is: {$targetStep->name}"
+            ];
+        }
+
+        $order++;
+
+        ApprovalActivity::create([
+            'ref_id' => $refId,
+            'ref_type' => $refType,
+            'approval_flow_id' => $runningFlow,
+            'approval_flow_detail_id' => $targetStep->id,
+            'step_snapshot' => self::buildStepSnapshot($targetStep),
+            'step' => $targetStep->order,
+            'step_name' => $targetStep->name,
+            'status' => 'PENDING',
+            'role_id' => $targetStep->role_id,
+            'user_id' => $assignee->id,
+            'note' => null,
+            'processed_at' => now(),
+            'order' => $order,
+        ]);
+
+        if ($revision) {
+            $revision->update([
+                'resolved_at' => now(),
+                'resolution' => 'FAST_RETURN',
+            ]);
+        }
+
+        return [
+            'success' => true,
+            'message' => "Revision returned directly to {$targetStep->name}, nothing material changed"
+        ];
+    }
+
+    /**
      * Get reference data for the approval
-     * 
+     *
      * @param string $refId Reference ID
      * @param string $refType Reference type
      * @return array Array containing approval flow, entity data, amount, and location
@@ -897,8 +1328,16 @@ class ApprovalService{
 
     /**
      * Fetch user by condition
+     *
+     * @param string $status Assignment condition of the step
+     * @param string $roleId Role the step is resolved for
+     * @param string|null $projectId
+     * @param string|null $regionId
+     * @param string|null $homeBaseId
+     * @param string|null $refType Reference type, scopes the workload count
+     * @param string|null $technicianUserId Technician the reference belongs to
      */
-    private static function fetchUserByCondition($status ,$roleId, $projectId = null, $regionId = null, $homeBaseId = null)
+    private static function fetchUserByCondition($status ,$roleId, $projectId = null, $regionId = null, $homeBaseId = null, $refType = null, $technicianUserId = null)
     {
          // Get all eligible users based on conditions
          $eligibleUsers = collect();
@@ -915,6 +1354,15 @@ class ApprovalService{
                 ->where('is_active', true)
                 ->get();
         } else if($status == self::SAME_PROJECT){
+            // NOTE: project() is the unfiltered user_projects membership, so a
+            // PROJECT_MANAGER or HELPDESK row also counts as membership here.
+            // The narrow User::financeProject() relation is the right filter for
+            // a finance step, but nothing in the flow marks a step's role as
+            // finance (roles carry is_project_manager and is_technician flags
+            // only), and the type backfill typed plain project_id rows as
+            // PROJECT_MANAGER. Narrowing without knowing the role is finance
+            // could empty the eligible set and hard-stop the approval, so this
+            // stays unfiltered until a finance role marker exists.
             $eligibleUsers = User::where('role_id', $roleId)
                 ->whereHas('project', function($query) use ($projectId) {
                     $query->where('projects.id', $projectId);
@@ -941,21 +1389,63 @@ class ApprovalService{
             return $eligibleUsers->first();
         }
 
-        // Load balance: find user with least approval activities
-        $userWorkloads = $eligibleUsers->map(function ($user) {
-            $activeApprovals = ApprovalActivity::where('user_id', $user->id)
-                // ->where('status', 'PENDING')
-                ->count();
-            
+        $currentPeriod = PeriodHelper::current();
+
+        // An explicit distribution outranks the balancer: it is generated per
+        // period on purpose so the same technician does not land on the same
+        // finance user forever. It can only ever pick somebody already in the
+        // eligible set, so a deactivated or unassigned finance user in a stale
+        // map row falls through to the balancer instead of being routed to.
+        if ($status == self::SAME_PROJECT && $projectId && $technicianUserId) {
+            $mappedUserId = FinanceDistributionService::resolveFinanceFor(
+                $currentPeriod,
+                $projectId,
+                $technicianUserId
+            );
+
+            if ($mappedUserId) {
+                $mappedUser = $eligibleUsers->firstWhere('id', $mappedUserId);
+
+                if ($mappedUser && $mappedUser->is_active) {
+                    return $mappedUser;
+                }
+            }
+        }
+
+        // Load balance: find user with the least approval work still open.
+        // Only PENDING rows count. Without that filter this is a lifetime total
+        // of every activity the user ever touched, including the APPROVED and
+        // REJECTED history and the step 0 initiator rows, which only ever grows
+        // and so can never rebalance.
+        $userWorkloads = $eligibleUsers->map(function ($user) use ($refType, $currentPeriod) {
+            $workloadQuery = ApprovalActivity::where('user_id', $user->id)
+                ->where('status', 'PENDING');
+
+            // A fund request queue and an expense queue are different work, so
+            // being busy with one must not starve the user out of the other.
+            if ($refType) {
+                $workloadQuery->where('ref_type', $refType);
+            }
+
+            $activeApprovals = $workloadQuery->count();
+
             return [
                 'user' => $user,
-                'workload' => $activeApprovals
+                'workload' => $activeApprovals,
+                // Equal workloads used to resolve to whatever order the database
+                // handed back, which is the same person every time. Hash the id
+                // with the period instead: still fully deterministic, so a
+                // retried request resolves identically, but the winner of a tie
+                // changes from one period to the next.
+                'tiebreak' => md5($user->id . '|' . $currentPeriod)
             ];
         });
 
-        // Sort by workload (ascending) and return user with least workload
-        $selectedUser = $userWorkloads->sortBy('workload')->first();
-        
+        // Sort by workload (ascending), then by the period tiebreak
+        $selectedUser = $userWorkloads->sortBy(function ($entry) {
+            return str_pad((string) $entry['workload'], 12, '0', STR_PAD_LEFT) . '|' . $entry['tiebreak'];
+        })->first();
+
         return $selectedUser['user'];
     }
 
@@ -1002,8 +1492,26 @@ class ApprovalService{
         return [
             'projectId' => $projectId,
             'regionId' => $regionId,
-            'homeBaseId' => $homeBaseId
+            'homeBaseId' => $homeBaseId,
+            // Who the expense report belongs to, used to look the reference up
+            // in the finance distribution for the period.
+            'technicianUserId' => self::resolveTechnicianByExpenseReport($expenseReportLocation->expense_report_id)
         ];
+    }
+
+    /**
+     * Resolve the user an expense report is assigned to.
+     *
+     * @param  string|null  $expenseReportId
+     * @return string|null
+     */
+    private static function resolveTechnicianByExpenseReport($expenseReportId)
+    {
+        if (!$expenseReportId) {
+            return null;
+        }
+
+        return ExpenseReport::find($expenseReportId)?->assignment_to;
     }
 
     /**
@@ -1037,7 +1545,8 @@ class ApprovalService{
         return [
             'projectId' => $projectId,
             'regionId' => $regionId ?? null,
-            'homeBaseId' => self::resolveHomeBaseByExpenseReport($expenseReportRequest->expense_report_id)
+            'homeBaseId' => self::resolveHomeBaseByExpenseReport($expenseReportRequest->expense_report_id),
+            'technicianUserId' => self::resolveTechnicianByExpenseReport($expenseReportRequest->expense_report_id)
         ];
     }
 }

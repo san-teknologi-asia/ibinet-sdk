@@ -27,7 +27,22 @@ class ApprovalRevisionHistory extends Model
 
     protected $casts = [
         'data' => 'array',
+        'resolved_at' => 'datetime',
     ];
+
+    /**
+     * Still awaiting the submitter's correction. Resubmission reads this to
+     * decide between replaying the flow and returning to whoever asked.
+     */
+    public function scopeOpen($query)
+    {
+        return $query->whereNull('resolved_at');
+    }
+
+    public function requestedBy()
+    {
+        return $this->belongsTo('Ibinet\Models\User', 'requested_user_id');
+    }
 
     /**
      *  Setup model event hooks

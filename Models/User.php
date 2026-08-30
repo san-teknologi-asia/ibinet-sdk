@@ -108,6 +108,41 @@ class User extends Authenticatable
         return $this->belongsToMany('Ibinet\Models\Project', 'user_projects');
     }
 
+    /**
+     * Projects this user is attached to as finance.
+     *
+     * Narrow counterpart to project(), which stays unfiltered because
+     * UserHelper::getUserProjectArray() and the project_ids accessor need
+     * every assignment regardless of pivot type.
+     */
+    public function financeProject()
+    {
+        return $this->belongsToMany('Ibinet\Models\Project', 'user_projects')
+            ->wherePivot('type', UserProject::TYPE_FINANCE);
+    }
+
+    /**
+     * The single node of the org chart this user sits in -- normally a leaf.
+     * Department, division and every other level are read from its ancestry
+     * rather than stored, so choosing the unit already settles the department.
+     */
+    public function organization()
+    {
+        return $this->belongsTo('Ibinet\Models\Organization', 'organization_id');
+    }
+
+    /**
+     * The department this user rolls up into, derived from the org tree.
+     * Null when the user has no organization assigned yet.
+     *
+     * @return \Ibinet\Models\Organization|null
+     */
+    public function getDepartmentAttribute()
+    {
+        return $this->organization
+            ? $this->organization->nearestOfType(Organization::TYPE_DEPARTMENT)
+            : null;
+    }
 
     public function userProject()
     {

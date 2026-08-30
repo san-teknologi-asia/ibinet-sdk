@@ -3,6 +3,7 @@
 namespace Ibinet\Helpers;
 use Illuminate\Support\Facades\Storage;
 use Intervention\Image\ImageManager;
+use Ramsey\Uuid\Uuid;
 
 class FormHelper{
 
@@ -25,7 +26,10 @@ class FormHelper{
         $request = null
     ){
         $app = env('AWS_APP_CODE');
-        $fileName = md5(date('YmdHis')."-{$directory}").'.'.$image->getClientOriginalExtension();
+        // Must be unique per file, not per second: several images can be uploaded
+        // in a single request and a timestamp-derived name makes them overwrite
+        // each other on s3.
+        $fileName = Uuid::uuid4()->toString().'.'.$image->getClientOriginalExtension();
 
         $imageManager = ImageManager::gd();
 
