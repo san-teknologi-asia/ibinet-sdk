@@ -81,12 +81,32 @@ class ExpenseReportBalance extends Model
     {
         if ($this->location_type === 'REGION') {
             $location = ExpenseReportLocation::where('id', $this->location_id)->first();
-            return $location ? "({$location->region->name}) {$location->project->name}" : null;
+
+            if (!$location) {
+                return null;
+            }
+
+            $regionName = $location->region?->name;
+
+            return $regionName
+                ? "({$regionName}) {$location->project?->name}"
+                : $location->project?->name;
         }
     
         if ($this->location_type === 'REMOTE') {
             $location = ExpenseReportRemote::where('id', $this->location_id)->first();
-            return $location ? "({$location->remote->name}) {$location->project->name}" : null;
+
+            if (!$location) {
+                return null;
+            }
+
+            // An expense record no longer has to name a remote, so fall back to
+            // the project alone rather than rendering an empty pair of brackets.
+            $remoteName = $location->remote?->name;
+
+            return $remoteName
+                ? "({$remoteName}) {$location->project?->name}"
+                : $location->project?->name;
         }
     
         return null;
