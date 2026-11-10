@@ -34,6 +34,7 @@ class TechnicianBorrow extends Model
         'start_date' => 'date',
         'end_date' => 'date',
         'actual_end_date' => 'date',
+        'project_membership_added' => 'boolean',
     ];
 
     /**
@@ -93,6 +94,11 @@ class TechnicianBorrow extends Model
     public function expenseReport()
     {
         return $this->belongsTo('Ibinet\Models\ExpenseReport', 'expense_report_id');
+    }
+
+    public function expenseReports()
+    {
+        return $this->hasMany(ExpenseReport::class, 'technician_borrow_id');
     }
 
     /**

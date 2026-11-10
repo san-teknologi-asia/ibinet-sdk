@@ -3,9 +3,9 @@
 namespace Ibinet\Helpers;
 
 use Ibinet\Models\TechnicianBorrow;
-use Ibinet\Models\TechnicianBorrowRemote;
 use Ibinet\Models\User;
 use Ibinet\Models\UserProject;
+use Carbon\Carbon;
 
 class TechnicianBorrowHelper
 {
@@ -17,10 +17,10 @@ class TechnicianBorrowHelper
      */
     public static function generateBorrowCode()
     {
-        $borrowCount = TechnicianBorrow::whereDate('created_at', date('Y-m-d'))
+        $borrowCount = TechnicianBorrow::withTrashed()->whereDate('created_at', today())
             ->count();
 
-        $borrowCode = "TBR-" . date('Ymd') . "-" . str_pad($borrowCount + 1, 4, '0', STR_PAD_LEFT);
+        $borrowCode = "TBR-" . now()->format('Ymd') . "-" . str_pad($borrowCount + 1, 4, '0', STR_PAD_LEFT);
 
         return $borrowCode;
     }
@@ -31,10 +31,11 @@ class TechnicianBorrowHelper
      * @param String $technician_id
      * @return Boolean
      */
-    public static function canBorrow($technician_id)
+    public static function canBorrow($technician_id, $startDate = null, $endDate = null)
     {
         $activeBorrow = TechnicianBorrow::where('technician_id', $technician_id)
-            ->whereIn('status', ['APPROVED', 'IN_PROGRESS'])
+            ->whereIn('status', ['PENDING_LENDER_APPROVAL', 'PENDING_BORROWER_APPROVAL', 'APPROVED', 'IN_PROGRESS'])
+            ->when($startDate && $endDate, fn ($q) => $q->whereDate('start_date', '<=', $endDate)->whereDate('end_date', '>=', $startDate))
             ->first();
 
         return $activeBorrow == null;
@@ -64,33 +65,25 @@ class TechnicianBorrowHelper
     }
 
     /**
-     * Calculate total estimated cost for borrow remotes
-     * Since pricing fields are removed, returns a default value
+     * Compatibility value for older clients: borrowing has no charge.
      *
      * @param Array $remotes
      * @return Integer
      */
     public static function calculateEstimatedCost($remotes)
     {
-        // Return default cost since we removed pricing fields
-        return count($remotes) * 10000; // 10k per remote as default
+        return 0;
     }
 
     /**
-     * Calculate total actual cost for borrow remotes
-     * Since pricing fields are removed, returns a default value
+     * Compatibility value for older clients: borrowing has no charge.
      *
      * @param String $borrow_id
      * @return Integer
      */
     public static function calculateActualCost($borrow_id)
     {
-        // Return default cost based on remote count
-        $remoteCount = TechnicianBorrowRemote::where('technician_borrow_id', $borrow_id)
-            ->where('is_removed', false)
-            ->count();
-        
-        return $remoteCount * 10000; // 10k per remote as default
+        return 0;
     }
 
     /**
@@ -107,7 +100,7 @@ class TechnicianBorrowHelper
             return false;
         }
         
-        return (bool) $user->role->is_project_manager;
+        return $user->hasPermission('ibos.technician_borrow.create') || $user->hasPermission('ibos.technician_borrow.approve');
     }
 
     /**
@@ -175,9 +168,9 @@ class TechnicianBorrowHelper
      */
     public static function validateDates($start_date, $end_date)
     {
-        $start = strtotime($start_date);
-        $end = strtotime($end_date);
-        $today = strtotime(date('Y-m-d'));
+        $start = Carbon::parse($start_date)->startOfDay()->timestamp;
+        $end = Carbon::parse($end_date)->startOfDay()->timestamp;
+        $today = today()->timestamp;
 
         if ($start < $today) {
             return [
@@ -211,6 +204,6 @@ class TechnicianBorrowHelper
         $start = strtotime($start_date);
         $end = strtotime($end_date);
         
-        return ceil(($end - $start) / (60 * 60 * 24));
+        return (int) ceil(($end - $start) / (60 * 60 * 24)) + 1;
     }
 }

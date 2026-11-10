@@ -68,6 +68,34 @@ class ExpenseReport extends Model
         return $this->belongsTo('Ibinet\Models\User', 'assignment_to')->withTrashed();
     }
 
+    public function project()
+    {
+        return $this->belongsTo(Project::class);
+    }
+
+    public function technicianBorrow()
+    {
+        return $this->belongsTo(TechnicianBorrow::class);
+    }
+
+    public function scopeForProject($query, $projectId)
+    {
+        return $query->where(fn ($q) => $q->where('project_id', $projectId)
+            ->orWhere(fn ($q) => $q->whereNull('project_id')->where(fn ($q) => $q
+                ->whereHas('location', fn ($q) => $q->where('project_id', $projectId))
+                ->orWhereHas('remote', fn ($q) => $q->where('project_id', $projectId))
+                ->orWhereHas('balanceRequest', fn ($q) => $q->where('project_id', $projectId)))));
+    }
+
+    public function isClosedForEntry(): bool
+    {
+        if ($this->is_locked || $this->status !== 'ONGOING') return true;
+        if (!$this->technician_borrow_id) return false;
+        $borrow = $this->technicianBorrow;
+        return !$borrow || !in_array($borrow->status, ['APPROVED', 'IN_PROGRESS'], true)
+            || today()->lt($borrow->start_date) || today()->gt($borrow->end_date);
+    }
+
     public function financeVerifiedBy()
     {
         return $this->belongsTo('Ibinet\Models\User', 'finance_verified_by')->withTrashed();

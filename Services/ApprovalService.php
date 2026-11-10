@@ -84,7 +84,8 @@ class ApprovalService{
                 $regionId,
                 $homeBaseId,
                 $refType,
-                $technicianUserId
+                $technicianUserId,
+                (bool) $nextStep->is_project_finance
             );
             
             if (!$nextAssignmentUser) {
@@ -238,6 +239,7 @@ class ApprovalService{
             'condition' => $step->condition,
             'condition_value' => $step->condition_value,
             'order' => (int) $step->order,
+            'is_project_finance' => (bool) $step->is_project_finance,
         ];
     }
 
@@ -324,26 +326,14 @@ class ApprovalService{
      */
     private static function determineNextStep($nextSteps, $refType, $entityAmount)
     {
-        if ($nextSteps->count() == 1) {
-            return $nextSteps->first();
-        }
-        
-        if ($nextSteps->count() > 1) {
-            // Look for a step with matching conditions
-            foreach ($nextSteps as $step) {
-                if (empty($step->condition) || empty($step->condition_value)) {
-                    continue;
-                }
-                
-                if (self::compareAmount($entityAmount, $step->condition, $step->condition_value)) {
-                    return $step;
-                }
+        foreach ($nextSteps as $step) {
+            if ($step->condition === null || trim($step->condition) === '') {
+                return $step;
             }
-            
-            // If no matching condition found, return the first step as fallback
-            return $nextSteps->first();
+            if (self::compareAmount($entityAmount, $step->condition, $step->condition_value)) {
+                return $step;
+            }
         }
-        
         return null;
     }
     
@@ -381,7 +371,11 @@ class ApprovalService{
         DB::beginTransaction();
         
         try {
-            $approvalStatus = $data['status'];
+            $approvalStatus = $data['status'] ?? null;
+            $data['note'] = $data['note'] ?? null;
+            // Serialize actions on the entity, including requests through different apps.
+            $model = $refType === self::REF_EXPENSE ? ExpenseReportBalance::class : ExpenseReportRequest::class;
+            $entity = $model::whereKey($refId)->lockForUpdate()->first();
             $currentActivity = self::fetchCurrentActivity($refId, $refType);
             
             if ($currentActivity == null) {
@@ -390,6 +384,17 @@ class ApprovalService{
                     'success' => false,
                     'message' => 'Approval step not found'
                 ];
+            }
+
+            $isResubmission = $currentActivity->status === 'REVISION' && (int) $currentActivity->step === 0;
+            $allowed = $isResubmission ? ['ACTION'] : ['APPROVED', 'REJECTED', 'REVISION'];
+            if (!$entity || !in_array($refType, [self::REF_EXPENSE, self::REF_FUND_REQUEST], true)
+                || $currentActivity->user_id !== auth()->id()
+                || (isset($data['expected_activity_id']) && $currentActivity->id !== $data['expected_activity_id'])
+                || (!$isResubmission && $currentActivity->status !== 'PENDING')
+                || !in_array($approvalStatus, $allowed, true)) {
+                DB::rollBack();
+                return ['success' => false, 'message' => 'This approval action is no longer available or is not assigned to you'];
             }
             
             // Revision bookkeeping runs for whichever step raised it. This used
@@ -593,8 +598,9 @@ class ApprovalService{
                 'order' => $currentActivity->order + 1
             ]);
             
-            // Update entity status to indicate revision
-            // TODO: Consider condition by revision status
+            // Entity status is a legacy enum; revision ownership lives on the
+            // activity while the entity continues waiting for confirmation.
+            self::updateEntityStatus($refType, $refId, 'WAITING CONFIRMATION');
             
             return [
                 'success' => true,
@@ -788,11 +794,30 @@ class ApprovalService{
                 $nextStepOrder = $currentStepOrder + 1;
             }
 
-            // Get next steps based on the order
-            $nextSteps = self::fetchStageSteps($runningFlow, $nextStepOrder);
+            // Conditions apply to single steps too. Skip non-applicable stages,
+            // including gaps in stage numbers, without inventing an approver.
+            $nextStep = null;
+            $orders = ApprovalFlowDetail::where('approval_flow_id', $runningFlow)
+                ->where('order', '>=', $nextStepOrder)->distinct()->orderBy('order')->pluck('order');
+            foreach ($orders as $order) {
+                $nextStep = self::determineNextStep(self::fetchStageSteps($runningFlow, $order), $refType, $expenseReportAmount);
+                if ($nextStep) break;
+            }
+
+            // A fund request is paid only through IFAS receipt confirmation.
+            // Legacy shared flows may end at a supervisor amount branch; retain
+            // their approvals, then route the payout to the configured finance role.
+            if (!$nextStep && $refType === self::REF_FUND_REQUEST && empty($data['transfer_confirmed'])) {
+                $nextStep = ApprovalFlowDetail::where('approval_flow_id', $runningFlow)
+                    ->whereHas('role.permissions', fn ($q) => $q->where('permission_id', 'ifas.fund-request.show'))
+                    ->orderByDesc('order')->first();
+                if (!$nextStep) {
+                    return ['success' => false, 'message' => 'The fund request flow needs a finance transfer-confirmation step'];
+                }
+            }
 
             // Check if we have next steps
-            if ($nextSteps->isEmpty()) {
+            if (!$nextStep) {
                 // This is the last step, mark as completed
                 ApprovalActivity::create([
                     'ref_id' => $refId,
@@ -818,17 +843,6 @@ class ApprovalService{
                 ];
             }
             
-            // Determine the next step based on conditions. Shared with initStep
-            // so the first stage and every later stage branch the same way.
-            $nextStep = self::determineNextStep($nextSteps, $refType, $expenseReportAmount);
-
-            if (!$nextStep) {
-                return [
-                    'success' => false,
-                    'message' => 'Could not determine next approval step'
-                ];
-            }
-            
             // Find the next assignee
             $nextAssignmentUser = self::fetchUserByCondition(
                 $nextStep->status,
@@ -837,7 +851,8 @@ class ApprovalService{
                 $regionId,
                 $homeBaseId,
                 $refType,
-                $technicianUserId
+                $technicianUserId,
+                (bool) $nextStep->is_project_finance
             );
             
             if (!$nextAssignmentUser) {
@@ -936,7 +951,7 @@ class ApprovalService{
     private static function defaultMaterialFields($refType)
     {
         if ($refType == self::REF_EXPENSE) {
-            return ['expense_category_id', 'location_type', 'location_id'];
+            return ['expense_category_id', 'location_type', 'location_id', 'upload_location'];
         }
 
         return [];
@@ -1217,6 +1232,9 @@ class ApprovalService{
         if ($revision && $revision->requested_user_id) {
             $assignee = User::where('id', $revision->requested_user_id)
                 ->where('is_active', true)
+                ->when($targetStep->is_project_finance, fn ($q) => $q
+                    ->where('role_id', $targetStep->role_id)
+                    ->whereHas('financeProject', fn ($q) => $q->where('projects.id', $projectId)))
                 ->first();
         }
 
@@ -1228,7 +1246,8 @@ class ApprovalService{
                 $regionId,
                 $homeBaseId,
                 $refType,
-                $technicianUserId
+                $technicianUserId,
+                (bool) $targetStep->is_project_finance
             );
         }
 
@@ -1337,12 +1356,15 @@ class ApprovalService{
      * @param string|null $refType Reference type, scopes the workload count
      * @param string|null $technicianUserId Technician the reference belongs to
      */
-    private static function fetchUserByCondition($status ,$roleId, $projectId = null, $regionId = null, $homeBaseId = null, $refType = null, $technicianUserId = null)
+    private static function fetchUserByCondition($status ,$roleId, $projectId = null, $regionId = null, $homeBaseId = null, $refType = null, $technicianUserId = null, $isProjectFinance = false)
     {
          // Get all eligible users based on conditions
          $eligibleUsers = collect();
          
-         if($status == self::NO_ROLE_CONDITION){
+         if ($isProjectFinance) {
+            $eligibleUsers = User::where('role_id', $roleId)->where('is_active', true)
+                ->whereHas('financeProject', fn ($q) => $q->where('projects.id', $projectId))->get();
+        } else if($status == self::NO_ROLE_CONDITION){
             $eligibleUsers = User::where('role_id', $roleId)
                 ->where('is_active', true)
                 ->get();
@@ -1354,15 +1376,8 @@ class ApprovalService{
                 ->where('is_active', true)
                 ->get();
         } else if($status == self::SAME_PROJECT){
-            // NOTE: project() is the unfiltered user_projects membership, so a
-            // PROJECT_MANAGER or HELPDESK row also counts as membership here.
-            // The narrow User::financeProject() relation is the right filter for
-            // a finance step, but nothing in the flow marks a step's role as
-            // finance (roles carry is_project_manager and is_technician flags
-            // only), and the type backfill typed plain project_id rows as
-            // PROJECT_MANAGER. Narrowing without knowing the role is finance
-            // could empty the eligible set and hard-stop the approval, so this
-            // stays unfiltered until a finance role marker exists.
+            // General project steps accept any membership type. Finance steps
+            // use the explicit finance roster in the branch above.
             $eligibleUsers = User::where('role_id', $roleId)
                 ->whereHas('project', function($query) use ($projectId) {
                     $query->where('projects.id', $projectId);
@@ -1396,7 +1411,7 @@ class ApprovalService{
         // finance user forever. It can only ever pick somebody already in the
         // eligible set, so a deactivated or unassigned finance user in a stale
         // map row falls through to the balancer instead of being routed to.
-        if ($status == self::SAME_PROJECT && $projectId && $technicianUserId) {
+        if ($isProjectFinance && $projectId && $technicianUserId) {
             $mappedUserId = FinanceDistributionService::resolveFinanceFor(
                 $currentPeriod,
                 $projectId,

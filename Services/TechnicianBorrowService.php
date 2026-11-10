@@ -9,8 +9,8 @@ use Ibinet\Models\TechnicianBorrowContractChange;
 use Ibinet\Models\ExpenseReport;
 use Ibinet\Models\ExpenseReportRemote;
 use Ibinet\Models\UserProject;
+use Ibinet\Models\User;
 use Ibinet\Helpers\TechnicianBorrowHelper;
-use Ibinet\Helpers\ExpenseReportHelper;
 use Ibinet\Helpers\NotificationHelper;
 use DB;
 
@@ -27,6 +27,7 @@ class TechnicianBorrowService
         DB::beginTransaction();
         
         try {
+            User::whereKey($data['technician_id'])->lockForUpdate()->firstOrFail();
             // Validate inputs
             $validation = self::validateBorrowRequest($data);
             if (!$validation['valid']) {
@@ -72,6 +73,13 @@ class TechnicianBorrowService
                 }
             }
 
+            // Submitting by an authorized requester records the borrowing side's approval.
+            TechnicianBorrowApproval::create([
+                'technician_borrow_id' => $borrow->id, 'approval_type' => 'INITIAL',
+                'approver_role' => 'BORROWER', 'approver_id' => $data['borrower_pm_id'],
+                'status' => 'APPROVED', 'approved_at' => now(),
+            ]);
+
             // Create approval records - only lender approval needed
             TechnicianBorrowApproval::create([
                 'technician_borrow_id' => $borrow->id,
@@ -115,31 +123,29 @@ class TechnicianBorrowService
      */
     private static function validateBorrowRequest($data)
     {
-        // Check if both users are project managers
-        if (!TechnicianBorrowHelper::isProjectManager($data['borrower_pm_id'])) {
-            return ['valid' => false, 'message' => 'Borrower must be a project manager'];
+        $borrower = User::find($data['borrower_pm_id']);
+        $lender = User::find($data['lender_pm_id']);
+        $technician = User::find($data['technician_id']);
+        if (!$borrower || !$borrower->is_active || $borrower->id !== auth()->id()
+            || !$borrower->hasPermission('ibos.technician_borrow.create')) {
+            return ['valid' => false, 'message' => 'The requester needs permission to borrow technicians'];
         }
-
-        if (!TechnicianBorrowHelper::isProjectManager($data['lender_pm_id'])) {
-            return ['valid' => false, 'message' => 'Lender must be a project manager'];
+        if (!$lender || !$lender->is_active || !$lender->hasPermission('ibos.technician_borrow.approve')) {
+            return ['valid' => false, 'message' => 'The lending representative needs approval permission'];
         }
-
-        // Check if borrower PM manages the borrower project
-        if (!TechnicianBorrowHelper::managesProject($data['borrower_pm_id'], $data['borrower_project_id'])) {
-            return ['valid' => false, 'message' => 'Borrower does not manage the borrower project'];
+        $lenderProject = $data['lender_project_id'] ?? null;
+        if (!$lenderProject || $lenderProject === $data['borrower_project_id'] || $borrower->id === $lender->id
+            || !$borrower->project()->whereKey($data['borrower_project_id'])->exists()
+            || !$lender->project()->whereKey($lenderProject)->exists()
+            || !$technician || !$technician->is_active || !$technician->hasRoleKind('is_technician')
+            || !$technician->project()->whereKey($lenderProject)->exists()) {
+            return ['valid' => false, 'message' => 'Select representatives and a technician belonging to the two different projects'];
         }
-
-        // Check if technician can be borrowed
-        if (!TechnicianBorrowHelper::canBorrow($data['technician_id'])) {
-            return ['valid' => false, 'message' => 'Technician is currently borrowed'];
+        $dates = TechnicianBorrowHelper::validateDates($data['start_date'], $data['end_date']);
+        if (!$dates['valid']) return $dates;
+        if (!TechnicianBorrowHelper::canBorrow($technician->id, $data['start_date'], $data['end_date'])) {
+            return ['valid' => false, 'message' => 'The technician already has an overlapping borrowing request'];
         }
-
-        // Validate dates
-        $dateValidation = TechnicianBorrowHelper::validateDates($data['start_date'], $data['end_date']);
-        if (!$dateValidation['valid']) {
-            return $dateValidation;
-        }
-
         return ['valid' => true, 'message' => 'Validation passed'];
     }
 
@@ -157,11 +163,20 @@ class TechnicianBorrowService
         DB::beginTransaction();
         
         try {
-            $borrow = TechnicianBorrow::with(['lenderApproval', 'borrowerApproval'])->find($borrow_id);
+            $borrow = TechnicianBorrow::with(['lenderApproval', 'borrowerApproval'])->lockForUpdate()->find($borrow_id);
             
             if (!$borrow) {
                 DB::rollBack();
                 return ['success' => false, 'message' => 'Borrow request not found'];
+            }
+
+            $approver = User::find($approver_id);
+            if (!in_array($action, ['APPROVED', 'REJECTED'], true) || $approver_id !== auth()->id()
+                || !$approver?->hasPermission('ibos.technician_borrow.approve')
+                || !$approver->project()->whereKey($borrow->lender_project_id)->exists()
+                || $borrow->status !== 'PENDING_LENDER_APPROVAL') {
+                DB::rollBack();
+                return ['success' => false, 'message' => 'This borrowing approval is not assigned to you'];
             }
 
             // Find pending approval for this approver
@@ -204,34 +219,21 @@ class TechnicianBorrowService
 
             // Handle approval - only lender approval needed
             if ($action == 'APPROVED') {
-                // Create expense report
-                $result = self::createExpenseReport($borrow);
-                
-                if (!$result['success']) {
-                    DB::rollBack();
-                    return $result;
-                }
-
-                $borrow->update([
-                    'status' => 'APPROVED',
-                    'expense_report_id' => $result['expense_report_id']
-                ]);
-
-                // Add technician to borrower's project temporarily
-                self::assignTechnicianToProject($borrow->technician_id, $borrow->borrower_project_id);
+                $added = self::assignTechnicianToProject($borrow->technician_id, $borrow->borrower_project_id);
+                $borrow->update(['status' => 'APPROVED', 'project_membership_added' => $added]);
 
                 DB::commit();
 
                 self::notify(
                     [$borrow->borrower_pm_id, $borrow->technician_id],
                     'Borrow request approved',
-                    "{$borrow->borrow_code} was approved. An expense report has been opened.",
+                    "{$borrow->borrow_code} was approved. The borrowing project can now prepare monthly expense reports.",
                     $borrow->id
                 );
 
                 return [
                     'success' => true,
-                    'message' => 'Borrow request approved. Expense report created.',
+                    'message' => 'Borrow request approved. Monthly expense reports can be created by the borrowing project.',
                     'data' => $borrow
                 ];
             }
@@ -242,69 +244,6 @@ class TechnicianBorrowService
             return [
                 'success' => false,
                 'message' => "Error processing approval: {$e->getMessage()}"
-            ];
-        }
-    }
-
-    /**
-     * Create expense report for approved borrowing
-     *
-     * @param TechnicianBorrow $borrow
-     * @return array
-     */
-    private static function createExpenseReport($borrow)
-    {
-        try {
-            $borrow->load(['technician', 'borrowerProject', 'remotes.remote', 'lenderApproval.approver']);
-
-            // Borrowing a technician is free, so the report starts with no budget.
-            // Funds are added afterwards through the normal fund request flow.
-            $totalCost = 0;
-
-            // Generate ER code
-            $erCode = ExpenseReportHelper::generateERCode();
-
-            // Create Expense Report
-            $lenderInfo = $borrow->lenderApproval ? $borrow->lenderApproval->approver->name : 'External';
-
-            $expenseReport = ExpenseReport::create([
-                'code' => $erCode,
-                'name' => "Technician Borrowing - {$borrow->technician->name} - {$borrow->borrow_code}",
-                'amount' => $totalCost,
-                'assignment_to' => $borrow->technician_id,
-                'created_by' => $borrow->borrower_pm_id,
-                'status' => 'ONGOING',
-                'remark' => "Borrowed from {$lenderInfo} for {$borrow->borrowerProject->name}. Period: {$borrow->start_date->format('d M Y')} - {$borrow->end_date->format('d M Y')}"
-            ]);
-
-            // Create one expense record per borrowed remote. A borrow does not
-            // have to name any remote, in which case the report simply carries
-            // no expense records until the technician files transactions.
-            // ONGOING is what the mobile dashboard lists as active work; the
-            // schedule pick-up path relies on the same column default.
-            foreach ($borrow->remotes as $borrowRemote) {
-                ExpenseReportRemote::create([
-                    'expense_report_id' => $expenseReport->id,
-                    'remote_id' => $borrowRemote->remote_id,
-                    'project_id' => $borrow->borrower_project_id,
-                    'work_type_id' => $borrowRemote->work_type_id,
-                    'status' => 'ONGOING',
-                    'phase' => 1,
-                    'date' => $borrowRemote->scheduled_date ?? $borrow->start_date,
-                ]);
-            }
-
-            return [
-                'success' => true,
-                'expense_report_id' => $expenseReport->id,
-                'expense_report_code' => $erCode
-            ];
-            
-        } catch (\Exception $e) {
-            \Log::error("ER creation error: {$e->getMessage()} on line {$e->getLine()}");
-            return [
-                'success' => false,
-                'message' => "Error creating expense report: {$e->getMessage()}"
             ];
         }
     }
@@ -325,9 +264,11 @@ class TechnicianBorrowService
         if (!$exists) {
             UserProject::create([
                 'user_id' => $technician_id,
-                'project_id' => $project_id
+                'project_id' => $project_id,
+                'type' => UserProject::TYPE_PROJECT_MANAGER,
             ]);
         }
+        return !$exists;
     }
 
     /**
@@ -337,11 +278,14 @@ class TechnicianBorrowService
      * @param string $project_id
      * @return void
      */
-    private static function removeTechnicianFromProject($technician_id, $project_id)
+    private static function removeTechnicianFromProject(TechnicianBorrow $borrow)
     {
-        UserProject::where('user_id', $technician_id)
-            ->where('project_id', $project_id)
-            ->delete();
+        if (!$borrow->project_membership_added) return;
+        $otherLoan = TechnicianBorrow::whereKeyNot($borrow->id)->where('technician_id', $borrow->technician_id)
+            ->where('borrower_project_id', $borrow->borrower_project_id)->whereIn('status', ['APPROVED', 'IN_PROGRESS'])->exists();
+        if (!$otherLoan) {
+            UserProject::where('user_id', $borrow->technician_id)->where('project_id', $borrow->borrower_project_id)->delete();
+        }
     }
 
     /**
@@ -387,7 +331,7 @@ class TechnicianBorrowService
         DB::beginTransaction();
         
         try {
-            $borrow = TechnicianBorrow::find($borrow_id);
+            $borrow = TechnicianBorrow::whereKey($borrow_id)->lockForUpdate()->first();
             
             if (!$borrow) {
                 DB::rollBack();
@@ -678,27 +622,23 @@ class TechnicianBorrowService
      * @param string $borrow_id
      * @return array
      */
-    public static function completeBorrowing($borrow_id)
+    public static function completeBorrowing($borrow_id, bool $scheduled = false)
     {
         DB::beginTransaction();
         
         try {
-            $borrow = TechnicianBorrow::with('remotes')->find($borrow_id);
+            $borrow = TechnicianBorrow::whereKey($borrow_id)->lockForUpdate()->first();
             
             if (!$borrow) {
                 DB::rollBack();
                 return ['success' => false, 'message' => 'Borrow request not found'];
             }
 
-            // Check if all remotes are completed or cancelled
-            $pendingRemotes = $borrow->remotes->whereIn('status', ['PENDING', 'IN_PROGRESS']);
-            
-            if ($pendingRemotes->count() > 0) {
+            if (!in_array($borrow->status, ['APPROVED', 'IN_PROGRESS'], true)
+                || (!$scheduled && (!in_array(auth()->id(), [$borrow->borrower_pm_id, $borrow->lender_pm_id], true)
+                    || !auth()->user()->hasPermission('ibos.technician_borrow.complete')))) {
                 DB::rollBack();
-                return [
-                    'success' => false,
-                    'message' => 'Cannot complete borrowing while remotes are still pending or in progress'
-                ];
+                return ['success' => false, 'message' => 'This borrowing cannot be completed by this user'];
             }
 
             // Update borrow status
@@ -707,14 +647,8 @@ class TechnicianBorrowService
                 'actual_end_date' => now()
             ]);
 
-            // Close expense report
-            if ($borrow->expense_report_id) {
-                ExpenseReport::find($borrow->expense_report_id)
-                    ->update(['status' => 'DONE']);
-            }
-
-            // Remove technician from borrower's project
-            self::removeTechnicianFromProject($borrow->technician_id, $borrow->borrower_project_id);
+            ExpenseReportLifecycleService::lockBorrowReports($borrow, $scheduled ? null : auth()->id());
+            self::removeTechnicianFromProject($borrow);
 
             DB::commit();
 
@@ -752,7 +686,7 @@ class TechnicianBorrowService
         DB::beginTransaction();
         
         try {
-            $borrow = TechnicianBorrow::find($borrow_id);
+            $borrow = TechnicianBorrow::whereKey($borrow_id)->lockForUpdate()->first();
             
             if (!$borrow) {
                 DB::rollBack();
@@ -760,6 +694,11 @@ class TechnicianBorrowService
             }
 
             // Can only cancel if not yet started or in early stages
+            if (!in_array(auth()->id(), [$borrow->borrower_pm_id, $borrow->lender_pm_id], true)
+                || !auth()->user()->hasPermission('ibos.technician_borrow.cancel')) {
+                DB::rollBack();
+                return ['success' => false, 'message' => 'This borrowing cannot be cancelled by this user'];
+            }
             if (in_array($borrow->status, ['COMPLETED', 'CANCELLED'])) {
                 DB::rollBack();
                 return ['success' => false, 'message' => 'Cannot cancel completed or already cancelled borrowing'];
@@ -775,14 +714,8 @@ class TechnicianBorrowService
             TechnicianBorrowRemote::where('technician_borrow_id', $borrow_id)
             ->update(['status' => 'CANCELLED']);
             
-            // Cancel expense report if exists
-            if ($borrow->expense_report_id) {
-                ExpenseReport::where('id', $borrow->expense_report_id)
-                ->update(['status' => 'CANCELLED']);
-            }
-
-            // Remove technician from project if assigned
-            self::removeTechnicianFromProject($borrow->technician_id, $borrow->borrower_project_id);
+            ExpenseReportLifecycleService::lockBorrowReports($borrow, auth()->id());
+            self::removeTechnicianFromProject($borrow);
 
             DB::commit();
 
@@ -814,18 +747,24 @@ class TechnicianBorrowService
      * @param string $borrow_id
      * @return array
      */
-    public static function startBorrowing($borrow_id)
+    public static function startBorrowing($borrow_id, bool $scheduled = false)
     {
         DB::beginTransaction();
         
         try {
-            $borrow = TechnicianBorrow::find($borrow_id);
+            $borrow = TechnicianBorrow::whereKey($borrow_id)->lockForUpdate()->first();
             
             if (!$borrow) {
                 DB::rollBack();
                 return ['success' => false, 'message' => 'Borrow request not found'];
             }
 
+            if ((!$scheduled && (!in_array(auth()->id(), [$borrow->borrower_pm_id, $borrow->lender_pm_id], true)
+                    || !auth()->user()->hasPermission('ibos.technician_borrow.start')))
+                || today()->lt($borrow->start_date) || today()->gt($borrow->end_date)) {
+                DB::rollBack();
+                return ['success' => false, 'message' => 'Borrowing can only start within its approved dates'];
+            }
             if ($borrow->status != 'APPROVED') {
                 DB::rollBack();
                 return ['success' => false, 'message' => 'Can only start approved borrowing'];
@@ -949,68 +888,18 @@ class TechnicianBorrowService
     public static function startScheduledBorrows()
     {
         $count = 0;
-        $borrows = TechnicianBorrow::where('status', 'APPROVED')
-            ->whereDate('start_date', '<=', now())
-            ->get();
-
-        foreach ($borrows as $borrow) {
-            DB::beginTransaction();
-            try {
-                $borrow->update(['status' => 'IN_PROGRESS']);
-                
-                // Ensure technician is assigned
-                self::assignTechnicianToProject($borrow->technician_id, $borrow->borrower_project_id);
-
-                DB::commit();
-                $count++;
-
-                self::notify(
-                    $borrow->technician_id,
-                    'Borrowing started',
-                    "{$borrow->borrow_code} is now active.",
-                    $borrow->id
-                );
-            } catch (\Exception $e) {
-                DB::rollBack();
-                \Log::error("Error starting borrow {$borrow->borrow_code}: {$e->getMessage()}");
-            }
+        foreach (TechnicianBorrow::where('status', 'APPROVED')->whereDate('start_date', '<=', today())->whereDate('end_date', '>=', today())->get() as $borrow) {
+            if (self::startBorrowing($borrow->id, true)['success']) $count++;
         }
-
         return ['count' => $count];
     }
 
-    /**
-     * Complete scheduled borrows (Cron Job)
-     *
-     * @return array
-     */
     public static function completeScheduledBorrows()
     {
         $count = 0;
-        // Find borrows that are in progress and end date has passed
-        $borrows = TechnicianBorrow::where('status', 'IN_PROGRESS')
-            ->whereDate('end_date', '<', now())
-            ->get();
-
-        foreach ($borrows as $borrow) {
-            DB::beginTransaction();
-            try {
-                // $borrow->update([
-                //     'status' => 'COMPLETED',
-                //     'actual_end_date' => $borrow->end_date // Assume completed on planned date
-                // ]);
-                
-                // Remove technician from project
-                self::removeTechnicianFromProject($borrow->technician_id, $borrow->borrower_project_id);
-                
-                DB::commit();
-                $count++;
-            } catch (\Exception $e) {
-                DB::rollBack();
-                \Log::error("Error completing borrow {$borrow->borrow_code}: {$e->getMessage()}");
-            }
+        foreach (TechnicianBorrow::whereIn('status', ['APPROVED', 'IN_PROGRESS'])->whereDate('end_date', '<', today())->get() as $borrow) {
+            if (self::completeBorrowing($borrow->id, true)['success']) $count++;
         }
-
         return ['count' => $count];
     }
 }

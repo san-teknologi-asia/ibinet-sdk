@@ -56,6 +56,12 @@ class PeriodHelper
         return self::periodFor(Carbon::now());
     }
 
+    /** Reports prepared on the cutoff day belong to the upcoming period. */
+    public static function newReportPeriod(): string
+    {
+        return self::periodFor(Carbon::now()->addDay());
+    }
+
     /**
      * Human readable period label, e.g. '202608' becomes 'August 2026'.
      *

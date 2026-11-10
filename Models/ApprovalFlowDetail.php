@@ -15,6 +15,8 @@ class ApprovalFlowDetail extends Model
 
     protected $keyType = 'string';
 
+    protected $casts = ['is_project_finance' => 'boolean'];
+
     /**
      * The attributes that are mass assignable.
      *
