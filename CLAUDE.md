@@ -37,7 +37,7 @@ Core shared package containing models, helpers, services, and middleware used by
 - **ActivityHelper**: Expense report activity creation
 - **MapsHelper**: Google Maps geocoding
 - **RouteHelper**: SSO route generation
-- **ConditionalHelper**: Role checking (SuperAdmin, Admin, Helpdesk, etc.)
+- **ConditionalHelper**: super-admin check (by role flag), PM-for-project and technician-assignment checks
 - **SettingHelper**: `setting($key)` cached settings
 
 ### Services (2 in `Ibinet\Services\`)
@@ -49,6 +49,33 @@ Core shared package containing models, helpers, services, and middleware used by
 
 ### Service Providers
 - **PermissionServiceProvider**: Registers `@has()` and `@canany()` Blade directives
+
+## Dashboard (per-user, shared by IDC / IFAS / IBOS)
+- `Services/Dashboard/WidgetCatalog.php` - abstract catalog. Each app has `App\Services\DashboardWidgets`
+  defining its widgets: label, type (`stat|chart|table`), size, and `permission` (string or any-of array,
+  checked with `has()`). Data comes from `payload($key)`; per-viewer tweaks go in `personalise()`, never
+  in `payload()` (its result can be cached for everyone).
+- `Services/Dashboard/InteractsWithDashboard.php` - controller trait: page config + widget data / save
+  layout / reset endpoints (`{prefix}dashboard.widgets|layout|layout.reset`).
+- `resources/views/dashboard/board.blade.php` - the board (`ibinet::dashboard.board`): GridStack 9 +
+  Chart.js 2, add-widget picker, edit mode. Registered by `Providers/DashboardServiceProvider`.
+- `Models/UserDashboardLayout` - table `user_dashboard_layouts`, one row per (user, app). A layout is
+  never shared between users; no row = the role's default layout.
+
+## Roles and permissions only - never role ids in .env, never role names
+Behaviour is decided by what admins set in IDC > Role. Never compare against an id from
+`.env` (`env('ROLE_...')`), a UUID literal, or a `LIKE '%Manager%'` on a role name: ids differ
+per environment, roles get recreated and renamed, and `env()` returns null once config is cached.
+
+- **What a role may do or see is a permission.** Signed-in user: `has('ibos.ticket.protest_approve')`.
+  Anyone else: `$user->hasPermission('...')`. Finding people: `User::withPermission('...')`
+  (e.g. who signs a report as finance). New behaviour = new permission in the app's
+  PermissionTableSeeder plus a migration in idc that creates and grants it.
+- **Where a role sits in a project team** is one of two role types, `Role::KINDS`
+  (`is_project_manager`, `is_technician`), ticked in IDC > Role. Use `$user->hasRoleKind(...)`,
+  `User::withRoleKind(...)`. Don't add a role type for something a permission can express.
+- **Fixed records** are flags on the record, set in IDC: the fund-transfer expense category is
+  `expense_categories.is_fund_transfer` (`ExpenseCategory::spendable()` / `::fundTransfer()`).
 
 ## Global Functions
 ```php
@@ -105,12 +132,8 @@ AWS_BASE_URL=...
 AWS_APP_CODE=...
 FIREBASE_CREDENTIALS=...
 GOOGLE_MAPS_API_KEY=...
-ROLE_SUPER_ADMIN=...
-ROLE_ADMIN=...
-ROLE_HELPDESK=...
-ROLE_SUPERVISOR_ADMIN=...
-ROLE_SUPERVISOR_HELPDESK=...
 ```
+No ROLE_* or category ids belong in .env - see "Roles and permissions only" above.
 
 ## Composer.json
 ```json

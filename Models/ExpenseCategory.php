@@ -25,6 +25,25 @@ class ExpenseCategory extends Model
         'created_at', 'updated_at'
     ];
 
+    protected $casts = [
+        'is_fund_transfer' => 'boolean',
+    ];
+
+    /**
+     * Categories a technician can book an expense against: everything except
+     * the fund-transfer category, which only IFAS uses when it pays out a
+     * fund request.
+     */
+    public function scopeSpendable($query)
+    {
+        return $query->where('is_fund_transfer', false);
+    }
+
+    public function scopeFundTransfer($query)
+    {
+        return $query->where('is_fund_transfer', true);
+    }
+
     /**
      *  Setup model event hooks
      */

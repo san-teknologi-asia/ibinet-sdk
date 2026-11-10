@@ -88,6 +88,50 @@ class User extends Authenticatable
         return $this->belongsTo('Ibinet\Models\Role');
     }
 
+    /**
+     * Whether this user's role is of a kind, e.g. hasRoleKind('is_technician').
+     * See Role::KINDS. Never compare role_id against a fixed id instead.
+     */
+    public function hasRoleKind(string $kind): bool
+    {
+        if (!array_key_exists($kind, Role::KINDS)) {
+            throw new \InvalidArgumentException("Unknown role kind [{$kind}].");
+        }
+
+        return (bool) optional($this->role)->{$kind};
+    }
+
+    /**
+     * Users whose role is of a kind, e.g. User::withRoleKind('is_technician').
+     */
+    public function scopeWithRoleKind($query, string $kind)
+    {
+        return $query->whereHas('role', fn ($role) => $role->ofKind($kind));
+    }
+
+    /**
+     * Whether this user's role holds a permission. has() answers the same for
+     * the signed-in user; this is for anyone else, e.g. a report's author.
+     */
+    public function hasPermission(string $permission): bool
+    {
+        if (!$this->role_id) {
+            return false;
+        }
+
+        return RolePermission::where('role_id', $this->role_id)
+            ->where('permission_id', $permission)
+            ->exists();
+    }
+
+    /**
+     * Users whose role holds a permission, e.g. who signs as finance.
+     */
+    public function scopeWithPermission($query, string $permission)
+    {
+        return $query->whereHas('role.permissions', fn ($grant) => $grant->where('permission_id', $permission));
+    }
+
     public function region()
     {
         return $this->belongsToMany('Ibinet\Models\Region', 'user_regions');

@@ -24,10 +24,44 @@ class Role extends Model
         'updated_at'
     ];
 
+    /**
+     * Where a role sits in a project team. These two describe the role itself
+     * (they drive the role/user hierarchy views, technician borrowing and who
+     * may assign technicians) and are ticked in IDC > Role.
+     *
+     * Everything a role may *do or see* is a permission instead, checked with
+     * has() or User::hasPermission(). Never identify a role by its id (no
+     * ROLE_* in .env) or by matching its name.
+     */
+    public const KINDS = [
+        'is_project_manager' => [
+            'label' => 'Project manager',
+            'badge' => 'PM',
+            'hint' => 'Heads a project team; can assign technicians and lend or borrow them.',
+        ],
+        'is_technician' => [
+            'label' => 'Technician',
+            'badge' => 'TECH',
+            'hint' => 'Carries out field work and can be borrowed between projects; cannot assign technicians.',
+        ],
+    ];
+
     protected $casts = [
         'is_project_manager' => 'boolean',
         'is_technician' => 'boolean',
     ];
+
+    /**
+     * Roles carrying a kind flag, e.g. Role::ofKind('is_supervisor').
+     */
+    public function scopeOfKind($query, string $kind)
+    {
+        if (!array_key_exists($kind, self::KINDS)) {
+            throw new \InvalidArgumentException("Unknown role kind [{$kind}].");
+        }
+
+        return $query->where($kind, true);
+    }
 
     /**
      * Roles directly under this one.

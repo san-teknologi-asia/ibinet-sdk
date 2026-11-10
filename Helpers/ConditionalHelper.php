@@ -16,51 +16,6 @@ class ConditionalHelper{
         }
     }
 
-    public static function checkSuperAdminRole($role)
-    {
-        if ($role == env('ROLE_SUPER_ADMIN')) {
-            return true;
-        } else{
-            return false;
-        }
-    }
-
-    public static function checkAdminRole($role)
-    {
-        if ($role == env('ROLE_ADMIN')) {
-            return true;
-        } else{
-            return false;
-        }
-    }
-
-    public static function checkHelpdeskRole($role)
-    {
-        if ($role == env('ROLE_HELPDESK')) {
-            return true;
-        } else{
-            return false;
-        }
-    }
-
-    public static function checkAdminSupervisorRole($role)
-    {
-        if ($role == env('ROLE_SUPERVISOR_ADMIN')) {
-            return true;
-        } else{
-            return false;
-        }
-    }
-
-    public static function checkHelpdeskSupervisorRole($role)
-    {
-        if ($role == env('ROLE_SUPERVISOR_HELPDESK')) {
-            return true;
-        } else{
-            return false;
-        }
-    }
-
     public static function doneStatusArray()
     {
         return ['DONE', 'PENDING WITH PROBLEM', 'DISMANTLE'];
@@ -111,13 +66,11 @@ class ConditionalHelper{
             return false;
         }
 
-        $roleName = strtolower($user->role->name ?? '');
         $userRoleId = $user->role_id;
 
-        // Explicitly prevent technician/engineering role from assigning.
-        $isTechnicianRole = strpos($roleName, 'technician') !== false
-            || strpos($roleName, 'engineering') !== false;
-        if ($isTechnicianRole) {
+        // Technicians never assign technicians. Decided by the role's flag,
+        // not by its name.
+        if ($user->role->is_technician) {
             return false;
         }
 

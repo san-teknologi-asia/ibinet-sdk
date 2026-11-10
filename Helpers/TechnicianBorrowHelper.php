@@ -52,10 +52,7 @@ class TechnicianBorrowHelper
         $projectTechnicians = User::whereHas('project', function($query) use ($project_id) {
                 $query->where('project_id', $project_id);
             })
-            ->whereHas('role', function($query) {
-                $query->where('name', 'LIKE', '%Technician%')
-                    ->orWhere('name', 'LIKE', '%Teknisi%');
-            })
+            ->withRoleKind('is_technician')
             ->get();
 
         // Filter out those currently borrowed
@@ -110,8 +107,7 @@ class TechnicianBorrowHelper
             return false;
         }
         
-        return stripos($user->role->name, 'Project Manager') !== false 
-            || stripos($user->role->name, 'PM') !== false;
+        return (bool) $user->role->is_project_manager;
     }
 
     /**
