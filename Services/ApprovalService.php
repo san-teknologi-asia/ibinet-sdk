@@ -64,16 +64,21 @@ class ApprovalService{
                 ];
             }
 
-            // Get next step(s) - could be multiple depending on conditions
-            $nextSteps = self::fetchStageSteps($approvalFlow, $firstStageOrder);
+            // The first stage is skipped like any other when none of its steps
+            // applies to this amount, so a flow may open with a step that only
+            // large requests need.
+            $nextStep = self::firstApplicableStep($approvalFlow, $firstStageOrder, $refType, $entityAmount);
 
-            // Determine the appropriate next step based on conditions
-            $nextStep = self::determineNextStep($nextSteps, $refType, $entityAmount);
-            
+            // Nothing in the flow applies to this amount, but a fund request is
+            // only ever paid through finance's transfer confirmation.
+            if (!$nextStep && $refType === self::REF_FUND_REQUEST) {
+                $nextStep = self::fundTransferStep($approvalFlow);
+            }
+
             if (!$nextStep) {
                 return [
                     'success' => false,
-                    'message' => 'Could not determine next approval step'
+                    'message' => 'No approval step applies to this amount. Check the conditions on the approval flow.'
                 ];
             }
             // Find the next assignee based on conditions
@@ -186,12 +191,16 @@ class ApprovalService{
      * flow form, so they are matched against a fixed set rather than executed.
      * An unrecognised operator or non-numeric threshold never matches.
      *
+     * `between` is inclusive at both ends and reads its upper bound from
+     * $conditionValueMax.
+     *
      * @param  mixed  $entityAmount
      * @param  string|null  $condition
      * @param  string|null  $conditionValue
+     * @param  string|null  $conditionValueMax
      * @return bool
      */
-    private static function compareAmount($entityAmount, $condition, $conditionValue)
+    private static function compareAmount($entityAmount, $condition, $conditionValue, $conditionValueMax = null)
     {
         if (!is_numeric($entityAmount) || !is_numeric($conditionValue)) {
             return false;
@@ -201,6 +210,10 @@ class ApprovalService{
         $right = (float) $conditionValue;
 
         switch (trim((string) $condition)) {
+            case 'between':
+                return is_numeric($conditionValueMax)
+                    && $left >= $right
+                    && $left <= (float) $conditionValueMax;
             case '<':
                 return $left < $right;
             case '<=':
@@ -238,6 +251,7 @@ class ApprovalService{
             'condition_id' => $step->condition_id,
             'condition' => $step->condition,
             'condition_value' => $step->condition_value,
+            'condition_value_max' => $step->condition_value_max,
             'order' => (int) $step->order,
             'is_project_finance' => (bool) $step->is_project_finance,
         ];
@@ -330,11 +344,60 @@ class ApprovalService{
             if ($step->condition === null || trim($step->condition) === '') {
                 return $step;
             }
-            if (self::compareAmount($entityAmount, $step->condition, $step->condition_value)) {
+            if (self::compareAmount($entityAmount, $step->condition, $step->condition_value, $step->condition_value_max)) {
                 return $step;
             }
         }
         return null;
+    }
+
+    /**
+     * The first step that applies to this amount, from the given stage on.
+     *
+     * A stage where no step applies is skipped rather than ending the flow,
+     * and gaps in stage numbers are walked over. This is the single rule the
+     * flow editor in IDC simulates, so the two must change together.
+     *
+     * @param  string  $approvalFlowId
+     * @param  int  $fromOrder
+     * @param  string  $refType
+     * @param  mixed  $amount
+     * @return \Ibinet\Models\ApprovalFlowDetail|null
+     */
+    private static function firstApplicableStep($approvalFlowId, $fromOrder, $refType, $amount)
+    {
+        $orders = ApprovalFlowDetail::where('approval_flow_id', $approvalFlowId)
+            ->where('order', '>=', $fromOrder)
+            ->distinct()
+            ->orderBy('order')
+            ->pluck('order');
+
+        foreach ($orders as $order) {
+            $step = self::determineNextStep(self::fetchStageSteps($approvalFlowId, $order), $refType, $amount);
+
+            if ($step) {
+                return $step;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * The step that pays out a fund request: the last step in the flow whose
+     * role can confirm the transfer in IFAS.
+     *
+     * @param  string  $approvalFlowId
+     * @return \Ibinet\Models\ApprovalFlowDetail|null
+     */
+    private static function fundTransferStep($approvalFlowId)
+    {
+        return ApprovalFlowDetail::where('approval_flow_id', $approvalFlowId)
+            ->whereHas('role.permissions', fn ($q) => $q->where('permission_id', 'ifas.fund-request.show'))
+            ->orderByDesc('order')
+            ->orderBy('created_at')
+            ->orderBy('id')
+            ->first();
     }
     
     /**
@@ -695,7 +758,7 @@ class ApprovalService{
                 }
                 
                 // Re-evaluate the condition with the historical entity amount
-                if (self::compareAmount($entityAmount, $step->condition, $step->condition_value)) {
+                if (self::compareAmount($entityAmount, $step->condition, $step->condition_value, $step->condition_value_max)) {
                     $selectedStep = $step;
                     break;
                 }
@@ -796,21 +859,13 @@ class ApprovalService{
 
             // Conditions apply to single steps too. Skip non-applicable stages,
             // including gaps in stage numbers, without inventing an approver.
-            $nextStep = null;
-            $orders = ApprovalFlowDetail::where('approval_flow_id', $runningFlow)
-                ->where('order', '>=', $nextStepOrder)->distinct()->orderBy('order')->pluck('order');
-            foreach ($orders as $order) {
-                $nextStep = self::determineNextStep(self::fetchStageSteps($runningFlow, $order), $refType, $expenseReportAmount);
-                if ($nextStep) break;
-            }
+            $nextStep = self::firstApplicableStep($runningFlow, $nextStepOrder, $refType, $expenseReportAmount);
 
             // A fund request is paid only through IFAS receipt confirmation.
             // Legacy shared flows may end at a supervisor amount branch; retain
             // their approvals, then route the payout to the configured finance role.
             if (!$nextStep && $refType === self::REF_FUND_REQUEST && empty($data['transfer_confirmed'])) {
-                $nextStep = ApprovalFlowDetail::where('approval_flow_id', $runningFlow)
-                    ->whereHas('role.permissions', fn ($q) => $q->where('permission_id', 'ifas.fund-request.show'))
-                    ->orderByDesc('order')->first();
+                $nextStep = self::fundTransferStep($runningFlow);
                 if (!$nextStep) {
                     return ['success' => false, 'message' => 'The fund request flow needs a finance transfer-confirmation step'];
                 }
