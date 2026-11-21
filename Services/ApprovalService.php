@@ -854,7 +854,18 @@ class ApprovalService{
                     ];
                 }
             } else {
-                $nextStepOrder = $currentStepOrder + 1;
+                // Move on from the furthest stage this run has reached, not from
+                // the current step's own stage. The payout fallback below can
+                // hand a fund request to a finance step whose stage sits before
+                // stages that already approved it (finance at stage 1 for small
+                // amounts, PM at stage 2 for large ones); moving on from stage 1
+                // sent a large request back to the PM after the transfer, and
+                // IFAS refused the confirmation. IDC's flow simulator already
+                // ends the chain at that payout step.
+                $nextStepOrder = max(
+                    $currentStepOrder,
+                    self::furthestStageInRun($refId, $refType, $currentActivity)
+                ) + 1;
             }
 
             // Conditions apply to single steps too. Skip non-applicable stages,
@@ -951,6 +962,35 @@ class ApprovalService{
                 'message' => "Error handling next step: {$t->getMessage()}"
             ];
         }
+    }
+
+    /**
+     * The highest stage a request has reached since it last entered the flow.
+     *
+     * A run starts at the latest step-0 row before the given activity: the
+     * requester's submission, or the revision bounce they resubmitted from.
+     * Stages from an earlier run do not count, because a resubmission that
+     * restarts the flow must go through them again.
+     *
+     * @param  string  $refId
+     * @param  string  $refType
+     * @param  \Ibinet\Models\ApprovalActivity  $currentActivity
+     * @return int
+     */
+    private static function furthestStageInRun($refId, $refType, $currentActivity)
+    {
+        $runStart = ApprovalActivity::where('ref_id', $refId)
+            ->where('ref_type', $refType)
+            ->where('step', 0)
+            ->where('order', '<', $currentActivity->order)
+            ->max('order');
+
+        return (int) ApprovalActivity::where('ref_id', $refId)
+            ->where('ref_type', $refType)
+            ->whereNotNull('approval_flow_detail_id')
+            ->when($runStart !== null, fn ($query) => $query->where('order', '>', $runStart))
+            ->where('order', '<=', $currentActivity->order)
+            ->max('step');
     }
 
     /**
@@ -1278,6 +1318,48 @@ class ApprovalService{
                     'order' => $order,
                 ]);
             }
+        }
+
+        // A fund request's payout step can sit at an earlier stage than steps
+        // that already approved it (see fundTransferStep). When that step asked
+        // for the revision, those later approvals stand as well; marking them
+        // here keeps the next step from being one that already signed.
+        $revisedRunStart = ApprovalActivity::where('ref_id', $refId)
+            ->where('ref_type', $refType)
+            ->where('step', 0)
+            ->where('order', '<', $currentActivity->order)
+            ->max('order');
+
+        $approvedLater = ApprovalActivity::where('ref_id', $refId)
+            ->where('ref_type', $refType)
+            ->whereNotNull('approval_flow_detail_id')
+            ->where('status', 'APPROVED')
+            ->where('step', '>', $targetStep->order)
+            ->when($revisedRunStart !== null, fn ($query) => $query->where('order', '>', $revisedRunStart))
+            ->where('order', '<', $currentActivity->order)
+            ->orderBy('step')
+            ->orderBy('order', 'desc')
+            ->get()
+            ->unique('step');
+
+        foreach ($approvedLater as $previous) {
+            $order++;
+
+            ApprovalActivity::create([
+                'ref_id' => $refId,
+                'ref_type' => $refType,
+                'approval_flow_id' => $runningFlow,
+                'approval_flow_detail_id' => $previous->approval_flow_detail_id,
+                'step_snapshot' => $previous->step_snapshot,
+                'step' => $previous->step,
+                'step_name' => $previous->step_name,
+                'status' => 'SKIPPED',
+                'role_id' => $previous->role_id,
+                'user_id' => $previous->user_id,
+                'note' => 'Auto-skipped on resubmission: nothing material changed since this approval',
+                'processed_at' => now(),
+                'order' => $order,
+            ]);
         }
 
         // Prefer the person who asked for the change; they already hold the
