@@ -112,6 +112,21 @@ class ExpenseReportBalance extends Model
         return null;
     }
 
+    /**
+     * The project this transaction is booked to: through its location, the
+     * way approvals route it, or the report's own project when it has none.
+     */
+    public function resolveProject(): ?Project
+    {
+        $location = match ($this->location_type) {
+            'REGION' => $this->expenseReportLocation,
+            'REMOTE' => $this->expenseReportRemote,
+            default => null,
+        };
+
+        return $location?->project ?? $this->expenseReport?->project;
+    }
+
     public function images()
     {
         return $this->hasMany('Ibinet\Models\ExpenseReportBalanceImage', 'expense_report_balance_id')

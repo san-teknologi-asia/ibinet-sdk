@@ -75,7 +75,9 @@ per environment, roles get recreated and renamed, and `env()` returns null once 
   (`is_project_manager`, `is_technician`), ticked in IDC > Role. Use `$user->hasRoleKind(...)`,
   `User::withRoleKind(...)`. Don't add a role type for something a permission can express.
 - **Fixed records** are flags on the record, set in IDC: the fund-transfer expense category is
-  `expense_categories.is_fund_transfer` (`ExpenseCategory::spendable()` / `::fundTransfer()`).
+  `expense_categories.is_fund_transfer` (`ExpenseCategory::spendable()` / `::fundTransfer()`), and
+  the refund category is `expense_categories.is_refund` (`::refund()`). Technicians book returned
+  money to the refund category as a normal transaction; its approved credit is a refund, not spend.
 
 ## Global Functions
 ```php

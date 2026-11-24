@@ -27,12 +27,15 @@ class ExpenseCategory extends Model
 
     protected $casts = [
         'is_fund_transfer' => 'boolean',
+        'is_refund' => 'boolean',
     ];
 
     /**
      * Categories a technician can book an expense against: everything except
      * the fund-transfer category, which only IFAS uses when it pays out a
-     * fund request.
+     * fund request. The refund category stays selectable: a technician books
+     * unspent money they return like an expense, with the transfer receipt as
+     * proof, and it goes through the same approval.
      */
     public function scopeSpendable($query)
     {
@@ -42,6 +45,15 @@ class ExpenseCategory extends Model
     public function scopeFundTransfer($query)
     {
         return $query->where('is_fund_transfer', true);
+    }
+
+    /**
+     * The category returned funds are booked to. Its approved credit rows are
+     * money given back, not spend, so finance figures report them apart.
+     */
+    public function scopeRefund($query)
+    {
+        return $query->where('is_refund', true);
     }
 
     /**

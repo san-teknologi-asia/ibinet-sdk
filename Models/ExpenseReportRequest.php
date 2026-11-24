@@ -64,6 +64,15 @@ class ExpenseReportRequest extends Model
     }
 
     /**
+     * The project this request funds, or the report's own project for a
+     * request saved before requests carried one.
+     */
+    public function resolveProject(): ?Project
+    {
+        return $this->project ?? $this->expenseReport?->project;
+    }
+
+    /**
      *  Setup model event hooks
      */
     public static function boot()

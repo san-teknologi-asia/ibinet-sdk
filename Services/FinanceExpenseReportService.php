@@ -42,4 +42,37 @@ class FinanceExpenseReportService
             ->where(fn ($q) => $q->where('period', '<=', $period)->orWhereNull('period'))
             ->update(['is_locked' => true, 'locked_at' => now(), 'locked_by' => $user->id]);
     }
+
+    /**
+     * Lock the chosen reports. Only open, ongoing reports in this user's
+     * finance projects change; any other id is skipped.
+     */
+    public static function lockSelected(User $user, array $ids): int
+    {
+        return self::setLocked($user, $ids, true);
+    }
+
+    /**
+     * Reopen the chosen reports for entry. It undoes a month-end close, so it
+     * needs its own permission on top of the lock permission.
+     */
+    public static function unlockSelected(User $user, array $ids): int
+    {
+        if (!$user->hasPermission('ifas.expense-report.unlock')) throw new AuthorizationException;
+        return self::setLocked($user, $ids, false);
+    }
+
+    private static function setLocked(User $user, array $ids, bool $locked): int
+    {
+        $reports = self::reportsFor($user)->whereIn('id', $ids)
+            ->where('status', 'ONGOING')->where('is_locked', !$locked)->get();
+
+        // One save per report rather than a bulk update, so the activity log
+        // records who closed or reopened each one.
+        DB::transaction(fn () => $reports->each->update($locked
+            ? ['is_locked' => true, 'locked_at' => now(), 'locked_by' => $user->id]
+            : ['is_locked' => false, 'locked_at' => null, 'locked_by' => null]));
+
+        return $reports->count();
+    }
 }

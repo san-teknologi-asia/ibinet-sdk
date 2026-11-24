@@ -32,7 +32,7 @@ trait ExpenseWorkflowFixture
 
         $tables = [
             'roles' => ['name', 'parent_id', 'is_technician', 'is_project_manager'],
-            'users' => ['name', 'email', 'password', 'role_id', 'is_active', 'deleted_at'],
+            'users' => ['name', 'email', 'password', 'role_id', 'is_active', 'nik', 'bank', 'bank_holder', 'bank_number', 'deleted_at'],
             'role_permissions' => ['role_id', 'permission_id'],
             'user_projects' => ['user_id', 'project_id', 'type'],
             'user_regions' => ['user_id', 'region_id'],
@@ -51,7 +51,7 @@ trait ExpenseWorkflowFixture
             'expense_report_remotes' => ['expense_report_id', 'project_id', 'remote_id', 'schedule_id'],
             'expense_report_balances' => ['expense_report_id', 'code', 'credit', 'debit', 'expense_category_id', 'location_id', 'location_type', 'created_by', 'status', 'remark', 'transfer_image', 'transfer_image_other', 'is_verified_by_supervisor', 'upload_lat_long', 'upload_location'],
             'expense_report_requests' => ['expense_report_id', 'project_id', 'code', 'amount', 'status', 'remark', 'approve_by', 'reject_reason', 'transfer_image'],
-            'expense_categories' => ['name', 'is_fund_transfer', 'deleted_at'],
+            'expense_categories' => ['name', 'is_fund_transfer', 'is_refund', 'deleted_at'],
             'expense_report_balance_images' => ['expense_report_balance_id', 'path', 'sort_order'],
             'notifications' => ['user_id', 'title', 'body', 'expense_report_id', 'transaction_id', 'approval_activity_id', 'technician_borrow_id', 'is_read'],
             'user_devices' => ['user_id', 'device_id'],
@@ -92,7 +92,7 @@ trait ExpenseWorkflowFixture
             if (in_array($kind, ['spv', 'pm'])) {
                 foreach (['index', 'create', 'approve', 'start', 'complete', 'cancel'] as $action) $permissions[] = 'ibos.technician_borrow.'.$action;
             }
-            if ($kind === 'finance') $permissions[] = 'ifas.expense-report.lock';
+            if ($kind === 'finance') array_push($permissions, 'ifas.expense-report.lock', 'ifas.expense-report.unlock', 'ifas.project-financing.show');
             foreach ($permissions as $permission) {
                 DB::table('role_permissions')->insert(['id' => $kind.$permission, 'role_id' => $kind, 'permission_id' => $permission]);
             }
@@ -102,6 +102,7 @@ trait ExpenseWorkflowFixture
         DB::table('project_regions')->insert(['id' => 'pr', 'project_id' => 'project', 'region_id' => 'region']);
         DB::table('expense_categories')->insert(['id' => 'travel', 'name' => 'Travel']);
         DB::table('expense_categories')->insert(['id' => 'fund', 'name' => 'Fund transfer', 'is_fund_transfer' => true]);
+        DB::table('expense_categories')->insert(['id' => 'refund', 'name' => 'Refund', 'is_refund' => true]);
         DB::table('approval_flows')->insert(['id' => 'flow', 'name' => 'Test flow', 'version' => 1]);
         foreach (['APPROVAL_EXPENSE_ER', 'APPROVAL_FUND_REQUEST'] as $key) {
             DB::table('settings')->insert(['id' => $key, 'code' => $key, 'value' => 'flow']);
