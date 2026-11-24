@@ -127,6 +127,24 @@ class ExpenseReportBalance extends Model
         return $location?->project ?? $this->expenseReport?->project;
     }
 
+    /**
+     * Every receipt photo URL, once. The mobile app fills the two legacy
+     * columns; newer records may also carry expense_report_balance_images
+     * rows. The legacy accessors prepend the storage URL even to an empty
+     * value, so the raw column decides whether a photo exists.
+     */
+    public function photos(): \Illuminate\Support\Collection
+    {
+        $photos = $this->images->pluck('path')->filter();
+        foreach (['transfer_image', 'transfer_image_other'] as $column) {
+            if ($this->getRawOriginal($column)) {
+                $photos->push($this->{$column});
+            }
+        }
+
+        return $photos->unique()->values();
+    }
+
     public function images()
     {
         return $this->hasMany('Ibinet\Models\ExpenseReportBalanceImage', 'expense_report_balance_id')
